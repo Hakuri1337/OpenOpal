@@ -111,7 +111,7 @@ public abstract class EntityMixin {
     }
 
     @Inject(
-            method = {"slowMovement", "makeStuckInBlock"},
+            method = "slowMovement",
             at = @At("TAIL")
     )
     private void hookSlowMovement(final BlockState state, final Vec3d motion, final CallbackInfo ci) {

@@ -1,6 +1,6 @@
 package wtf.opal.mixin;
 
-import com.google.common.base.Predicates;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -9,14 +9,14 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.memory.ObjectAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import wtf.opal.client.OpalClient;
@@ -36,9 +36,6 @@ public abstract class GameRendererMixin {
     @Final
     @Shadow
     private BufferBuilderStorage buffers;
-
-    @Unique
-    private boolean passThroughBlocks;
 
     @Inject(method = "onResized", at = @At("HEAD"))
     private void hookOnResized(int width, int height, CallbackInfo ci) {
@@ -61,33 +58,22 @@ public abstract class GameRendererMixin {
         GlStateManager._disableBlend();
     }
 
-    @Redirect(
-            method = "findCrosshairTarget",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/util/hit/HitResult;getType()Lnet/minecraft/util/hit/HitResult$Type;")
+    @ModifyExpressionValue(
+            method = "updateCrosshairTarget",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/network/ClientPlayerEntity;getCrosshairTarget(FLnet/minecraft/entity/Entity;)Lnet/minecraft/util/hit/HitResult;")
     )
-    private HitResult.Type redirectBlockHitResultType(HitResult instance) {
-        if (passThroughBlocks) {
-            passThroughBlocks = false;
-            return HitResult.Type.MISS;
+    private HitResult hookPiercingCrosshairTarget(HitResult original, float tickDelta) {
+        if (!OpalClient.getInstance().getModuleRepository().getModule(PiercingModule.class).isEnabled()) {
+            return original;
         }
 
-        return instance.getType();
-    }
-
-    @Redirect(
-            method = "findCrosshairTarget",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/util/math/Vec3d;squaredDistanceTo(Lnet/minecraft/util/math/Vec3d;)D", ordinal = 0)
-    )
-    private double redirectPassedThroughBlockDistance(Vec3d instance, Vec3d vec, @Local(ordinal = 1, argsOnly = true) double entityInteractionRange, @Local(argsOnly = true) float tickDelta) {
-        if (OpalClient.getInstance().getModuleRepository().getModule(PiercingModule.class).isEnabled()) {
-            final HitResult hitResult = RaycastUtility.raycastEntity(entityInteractionRange, tickDelta, mc.player.getYaw(), mc.player.getPitch(), Predicates.alwaysTrue());
-            if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
-                passThroughBlocks = true;
-                return Double.MAX_VALUE;
-            }
+        final Entity cameraEntity = mc.getCameraEntity();
+        final HitResult hitResult = RaycastUtility.raycastEntity(mc.player.getEntityInteractionRange(), tickDelta, mc.player.getYaw(), mc.player.getPitch(), entity -> entity != cameraEntity);
+        if (hitResult instanceof EntityHitResult) {
+            return hitResult;
         }
 
-        return instance.squaredDistanceTo(vec);
+        return original;
     }
 
     @Inject(

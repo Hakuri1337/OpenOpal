@@ -1,7 +1,6 @@
 package wtf.opal.mixin;
 
 import net.minecraft.client.gui.hud.ChatHud;
-import net.minecraft.client.gui.hud.ChatHudLine;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Style;
@@ -9,7 +8,7 @@ import net.minecraft.util.Formatting;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import wtf.opal.client.OpalClient;
 import wtf.opal.client.feature.module.impl.visual.StreamerModeModule;
 
@@ -24,11 +23,12 @@ public final class ChatHudMixin {
     @Unique
     private static Style GRAY_STYLE;
 
-    @Redirect(
-            method = "method_71991",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/hud/ChatHudLine$Visible;content()Lnet/minecraft/text/OrderedText;")
+    @ModifyArg(
+            method = "render(Lnet/minecraft/client/gui/hud/ChatHud$Backend;IIZ)V",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/hud/ChatHud$Backend;text(IFLnet/minecraft/text/OrderedText;)Z"),
+            index = 2
     )
-    private OrderedText appendSocketUsernames(final ChatHudLine.Visible instance) {
+    private OrderedText appendSocketUsernames(final OrderedText content) {
         if (GRAY_STYLE == null) {
             GRAY_STYLE = Style.EMPTY.withColor(Formatting.GRAY);
         }
@@ -36,7 +36,7 @@ public final class ChatHudMixin {
         final List<OrderedText> styledSegments = new ArrayList<>();
         final StringBuilder builder = new StringBuilder();
 
-        instance.content().accept((index, style, codePoint) -> {
+        content.accept((index, style, codePoint) -> {
             styledSegments.add(OrderedText.styledForwardsVisitedString(String.valueOf((char) codePoint), style));
             builder.append((char) codePoint);
             return true;
