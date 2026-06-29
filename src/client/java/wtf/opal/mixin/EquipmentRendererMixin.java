@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.equipment.EquipmentRenderer;
@@ -25,12 +26,12 @@ EquipmentRendererMixin {
     //10j3k revisit and check if this is right
     @WrapOperation(
             method = "render(Lnet/minecraft/client/render/entity/equipment/EquipmentModel$LayerType;Lnet/minecraft/registry/RegistryKey;Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;ILnet/minecraft/util/Identifier;II)V",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/RenderLayer;getArmorCutoutNoCull(Lnet/minecraft/util/Identifier;)Lnet/minecraft/client/render/RenderLayer;")
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/RenderLayers;armorCutoutNoCull(Lnet/minecraft/util/Identifier;)Lnet/minecraft/client/render/RenderLayer;")
     )
     private RenderLayer opal$renderArmorTintLayer(Identifier texture, Operation<RenderLayer> original) {
         final AnimationsModule animationsModule = OpalClient.getInstance().getModuleRepository().getModule(AnimationsModule.class);
         if (animationsModule.isEnabled() && animationsModule.isOldArmorDamageTint()) {
-            return RenderLayer.getEntityCutoutNoCullZOffset(texture);
+            return RenderLayers.entityCutoutNoCullZOffset(texture);
         }
         return original.call(texture);
     }

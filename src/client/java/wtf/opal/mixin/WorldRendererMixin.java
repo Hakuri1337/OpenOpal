@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import net.minecraft.client.render.*;
 import net.minecraft.client.render.state.WorldRenderState;
+import net.minecraft.world.dimension.DimensionType;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -38,7 +39,7 @@ public final class WorldRendererMixin {
         final AmbienceModule ambienceModule = OpalClient.getInstance().getModuleRepository().getModule(AmbienceModule.class);
         if (ambienceModule.isEnabled() && ambienceModule.isEndSky()) {
             // 10j3k check if this causes issues later on :v
-            worldRenderState.skyRenderState.skyType = DimensionEffects.SkyType.END;
+            worldRenderState.skyRenderState.skybox = DimensionType.Skybox.END;
         }
     }
 

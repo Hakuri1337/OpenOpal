@@ -46,7 +46,7 @@ public final class MathUtility {
                         MathHelper.lerp(tickDelta, entity.lastRenderY, entity.getY()) - entity.getY(),
                         MathHelper.lerp(tickDelta, entity.lastRenderZ, entity.getZ()) - entity.getZ()
                 )
-                .subtract(camera.getPos());
+                .subtract(camera.getCameraPos());
     }
 
     public static double interpolate(final double a, final double b, final double v) {

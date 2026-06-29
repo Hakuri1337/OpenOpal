@@ -19,7 +19,7 @@ public record WorldRenderer(Camera camera, VertexConsumerProvider vcp) {
     public void drawFilledQuad(MatrixStack stack, RenderLayer layer, Vec3d position, Vec2f dimensions, int color) {
         VertexConsumer buffer = vcp.getBuffer(layer);
         MatrixStack.Entry transform = stack.peek();
-        Vector3f transformedRoot = position.subtract(camera.getPos()).toVector3f();
+        Vector3f transformedRoot = position.subtract(camera.getCameraPos()).toVector3f();
         float x = transformedRoot.x;
         float y = transformedRoot.y;
         float z = transformedRoot.z;
@@ -40,7 +40,7 @@ public record WorldRenderer(Camera camera, VertexConsumerProvider vcp) {
     public void drawFilledCube(MatrixStack stack, RenderLayer layer, Vec3d position, Vec3d dimensions, int color) {
         VertexConsumer buffer = vcp.getBuffer(layer);
         MatrixStack.Entry transform = stack.peek();
-        Vector3f transformedRoot = position.subtract(camera.getPos()).toVector3f();
+        Vector3f transformedRoot = position.subtract(camera.getCameraPos()).toVector3f();
         float x = transformedRoot.x;
         float y = transformedRoot.y;
         float z = transformedRoot.z;
@@ -65,8 +65,8 @@ public record WorldRenderer(Camera camera, VertexConsumerProvider vcp) {
     public void drawLine(MatrixStack stack, RenderLayer layer, Vec3d start, Vec3d end, int color) {
         VertexConsumer buffer = vcp.getBuffer(layer);
         MatrixStack.Entry transform = stack.peek();
-        Vector3f tfStart = start.subtract(camera.getPos()).toVector3f();
-        Vector3f tfEnd = end.subtract(camera.getPos()).toVector3f();
+        Vector3f tfStart = start.subtract(camera.getCameraPos()).toVector3f();
+        Vector3f tfEnd = end.subtract(camera.getCameraPos()).toVector3f();
         Vector3f direction = tfEnd.sub(tfStart, new Vector3f()).normalize();
         float x1 = tfStart.x;
         float y1 = tfStart.y;

@@ -128,7 +128,7 @@ public abstract class PlayerEntityMixin extends LivingEntity implements PlayerEn
     private ItemStack visualSelectedItem;
 
     @Inject(
-            method = "resetLastAttackedTicks",
+            method = "resetTicksSinceLastAttack",
             at = @At("TAIL")
     )
     private void resetVisualLastAttackedTicks(CallbackInfo ci) {
@@ -157,15 +157,15 @@ public abstract class PlayerEntityMixin extends LivingEntity implements PlayerEn
 
     @Redirect(
             method = "tick",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/PlayerEntity;resetLastAttackedTicks()V")
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/PlayerEntity;resetTicksSinceLastAttack()V")
     )
     private void onSwapLastAttackedTicksReset(PlayerEntity instance) {
-        this.lastAttackedTicks = 0;
+        instance.resetTicksSinceLastAttack();
     }
 
     @Inject(
             method = "tick",
-            at = @At(value = "FIELD", target = "Lnet/minecraft/entity/player/PlayerEntity;lastAttackedTicks:I", ordinal = 0)
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/PlayerEntity;getMainHandStack()Lnet/minecraft/item/ItemStack;", shift = At.Shift.AFTER)
     )
     private void incrementLastAttackedTicks(CallbackInfo ci) {
         this.visualLastAttackedTicks++;

@@ -49,7 +49,7 @@ public final class BreakProgressModule extends Module {
             return;
         }
 
-        final Vec3d cameraPos = mc.gameRenderer.getCamera().getPos();
+        final Vec3d cameraPos = mc.gameRenderer.getCamera().getCameraPos();
         final float relX = (float) (blockPos.getX() - cameraPos.x + 0.5);
         final float relY = (float) (blockPos.getY() - cameraPos.y + 0.5);
         final float relZ = (float) (blockPos.getZ() - cameraPos.z + 0.5);
