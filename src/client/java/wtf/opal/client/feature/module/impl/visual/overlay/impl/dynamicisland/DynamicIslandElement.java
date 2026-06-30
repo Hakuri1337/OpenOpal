@@ -128,7 +128,13 @@ public final class DynamicIslandElement implements IOverlayElement, IEventSubscr
     }
 
     public void renderIslandBackground(float x, float y, float width, float height) {
-        LiquidGlassRenderer.drawIsland(x, y, width, height, 13, Math.min(1, this.heightAnimation.getProgress()));
+        if (this.module.isDynamicIslandLiquidGlass()) {
+            LiquidGlassRenderer.drawIsland(x, y, width, height, 13, Math.min(1, this.heightAnimation.getProgress()));
+            return;
+        }
+
+        NVGRenderer.roundedRect(x + 1, y + 1, width - 2, height - 2, 13, NVGRenderer.BLUR_PAINT);
+        NVGRenderer.roundedRect(x + 1, y + 1, width - 2, height - 2, 13, 0x80090909);
     }
 
     private final Animation xAnimation = new Animation(Easing.DYNAMIC_ISLAND, 250);

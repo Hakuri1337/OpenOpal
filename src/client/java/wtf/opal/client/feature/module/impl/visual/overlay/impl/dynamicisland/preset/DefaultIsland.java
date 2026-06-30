@@ -26,10 +26,11 @@ public class DefaultIsland implements IslandTrigger {
 
     @Override
     public void renderIsland(DrawContext context, float posX, float posY, float width, float height, float progress) {
+        final NVGTextRenderer brandFont = FontRepository.getFont("borel-regular");
         final NVGTextRenderer titleFont = FontRepository.getFont("productsans-bold");
         final NVGTextRenderer footerFont = FontRepository.getFont("productsans-medium");
 
-        final String opalText = ReleaseInfo.NAME;
+        final String openOpalText = "OpenOpal";
         final String releaseType = ReleaseInfo.CHANNEL.toString();
         final String releaseVersion = "v" + ReleaseInfo.VERSION;
 
@@ -73,7 +74,7 @@ public class DefaultIsland implements IslandTrigger {
                 footerFont.getStringWidth(releaseVersion, footerTextSize)
         );
 
-        this.width = 14 + titleFont.getStringWidth(opalText, titleTextSize) + releaseInfoWidth + titleFont.getStringWidth(serverAddress, secondaryTextSize) + 35;
+        this.width = 14 + brandFont.getStringWidth(openOpalText, titleTextSize) + releaseInfoWidth + titleFont.getStringWidth(serverAddress, secondaryTextSize) + 35;
 
         final ClientTheme theme = OpalClient.getInstance().getModuleRepository().getModule(OverlayModule.class).getThemeMode().getValue();
         final Pair<Integer, Integer> colors = theme.getColors();
@@ -107,9 +108,9 @@ public class DefaultIsland implements IslandTrigger {
         }
 
         final float textStart = posX + 26.5f - 2;
-        titleFont.drawGradientString(opalText, textStart, posY + baseYOffset + 2.5F + baseXOffset, titleTextSize, colors.second, colors.first);
+        brandFont.drawGradientString(openOpalText, textStart, posY + baseYOffset + 2.5F + baseXOffset, titleTextSize, colors.second, colors.first);
 
-        final float releaseTypeStart = textStart + titleFont.getStringWidth(opalText, titleTextSize) + 3.3f + 1;
+        final float releaseTypeStart = textStart + brandFont.getStringWidth(openOpalText, titleTextSize) + 3.3f + 1;
         NVGRenderer.rect(releaseTypeStart, posY + dividerHeight / 1.5f - 2F, 0.75F, 10, ColorUtility.MUTED_COLOR);
 
         titleFont.drawString(releaseType, releaseTypeStart + textSpacing + 2, posY + dividerHeight / 1.3f + 1.0F, secondaryTextSize, -1);

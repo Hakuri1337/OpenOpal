@@ -14,57 +14,69 @@ import static com.mojang.brigadier.Command.SINGLE_SUCCESS;
 public final class ConfigCommand extends Command {
 
     public ConfigCommand() {
-        super("Failed to initialize repository:", "Interacts with configs.", "c");
+        super("config", "Interacts with configs.", "c");
     }
 
     @Override
     protected void onCommand(final LiteralArgumentBuilder<CommandSource> builder) {
+        builder.executes(context -> {
+            printConfigs();
+            return SINGLE_SUCCESS;
+        });
+
         builder.then(literal("save").then(argument("config_name", ConfigArgumentType.create()).executes(context -> {
-            final String configName = context.getArgument("config_name", String.class).toLowerCase();
+            final String configName = getConfigName(context.getArgument("config_name", String.class));
 
             if (SaveUtility.saveConfig(configName)) {
-                ChatUtility.success("Config §l" + configName + "§7 saved!");
+                ChatUtility.success("Config \u00a7l" + configName + "\u00a77 saved!");
             } else {
-                ChatUtility.error("Failed to save config §l" + configName + "§7.");
+                ChatUtility.error("Failed to save config \u00a7l" + configName + "\u00a77.");
             }
 
             return SINGLE_SUCCESS;
         })));
 
         builder.then(literal("list").executes(context -> {
-            final List<String> configs = SaveUtility.listConfigs();
-            if (configs.isEmpty()) {
-                ChatUtility.print("No configs found.");
-                return SINGLE_SUCCESS;
-            }
-
-            ChatUtility.print("Configs: §l" + String.join("§7, §l", configs) + "§7");
-
+            printConfigs();
             return SINGLE_SUCCESS;
         }));
 
         builder.then(literal("load").then(argument("config_name", ConfigArgumentType.create()).executes(context -> {
-            final String configName = context.getArgument("config_name", String.class).toLowerCase();
+            final String configName = getConfigName(context.getArgument("config_name", String.class));
 
             if (SaveUtility.loadConfigFile(configName)) {
-                ChatUtility.success("Config §l" + configName + "§7 loaded!");
+                ChatUtility.success("Config \u00a7l" + configName + "\u00a77 loaded!");
             } else {
-                ChatUtility.error("Failed to load config §l" + configName + "§7.");
+                ChatUtility.error("Failed to load config \u00a7l" + configName + "\u00a77.");
             }
 
             return SINGLE_SUCCESS;
         })));
 
         builder.then(literal("delete").then(argument("config_name", ConfigArgumentType.create()).executes(context -> {
-            final String configName = context.getArgument("config_name", String.class).toLowerCase();
+            final String configName = getConfigName(context.getArgument("config_name", String.class));
 
             if (SaveUtility.deleteConfig(configName)) {
-                ChatUtility.success("Config §l" + configName + "§7 deleted!");
+                ChatUtility.success("Config \u00a7l" + configName + "\u00a77 deleted!");
             } else {
-                ChatUtility.error("Failed to delete config §l" + configName + "§7.");
+                ChatUtility.error("Failed to delete config \u00a7l" + configName + "\u00a77.");
             }
 
             return SINGLE_SUCCESS;
         })));
+    }
+
+    private static String getConfigName(final String configName) {
+        return configName == null ? "" : configName.trim().toLowerCase();
+    }
+
+    private static void printConfigs() {
+        final List<String> configs = SaveUtility.listConfigs();
+        if (configs.isEmpty()) {
+            ChatUtility.print("No configs found.");
+            return;
+        }
+
+        ChatUtility.print("Configs: \u00a7l" + String.join("\u00a77, \u00a7l", configs) + "\u00a77");
     }
 }

@@ -3,23 +3,14 @@ package wtf.opal.client.renderer.repository;
 import net.fabricmc.loader.impl.launch.knot.Knot;
 import wtf.opal.client.renderer.text.NVGTextRenderer;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 public final class FontRepository {
 
     private static final HashMap<String, NVGTextRenderer> TEXT_RENDERER_MAP = new HashMap<>();
     private static final String CJK_FALLBACK_NAME = "__opal_cjk_fallback__";
-    private static final String[] WINDOWS_CJK_FALLBACK_PATHS = {
-            "C:\\Windows\\Fonts\\msyh.ttc",
-            "C:\\Windows\\Fonts\\msyh.ttf",
-            "C:\\Windows\\Fonts\\simhei.ttf",
-            "C:\\Windows\\Fonts\\simsun.ttc",
-            "C:\\Windows\\Fonts\\simsun.ttf"
-    };
+    private static final String CJK_FALLBACK_RESOURCE = "genshin";
 
     public static NVGTextRenderer getFont(final String name) {
         if (TEXT_RENDERER_MAP.containsKey(name)) {
@@ -51,18 +42,12 @@ public final class FontRepository {
             return TEXT_RENDERER_MAP.get(CJK_FALLBACK_NAME);
         }
 
-        for (final String pathString : WINDOWS_CJK_FALLBACK_PATHS) {
-            final Path path = Path.of(pathString);
-            if (!Files.exists(path)) {
-                continue;
-            }
-
-            try (final InputStream inputStream = Files.newInputStream(path)) {
-                final NVGTextRenderer fallbackRenderer = new NVGTextRenderer(CJK_FALLBACK_NAME, inputStream);
-                TEXT_RENDERER_MAP.put(CJK_FALLBACK_NAME, fallbackRenderer);
-                return fallbackRenderer;
-            } catch (IOException ignored) {
-            }
+        final InputStream inputStream = Knot.getLauncher().getTargetClassLoader()
+                .getResourceAsStream("assets/opal/fonts/" + CJK_FALLBACK_RESOURCE + ".ttf");
+        if (inputStream != null) {
+            final NVGTextRenderer fallbackRenderer = new NVGTextRenderer(CJK_FALLBACK_NAME, inputStream);
+            TEXT_RENDERER_MAP.put(CJK_FALLBACK_NAME, fallbackRenderer);
+            return fallbackRenderer;
         }
 
         return null;

@@ -1,7 +1,6 @@
 package wtf.opal.utility.data;
 
 import com.google.gson.*;
-import com.google.gson.internal.LinkedTreeMap;
 import com.ibm.icu.impl.Pair;
 import wtf.opal.client.OpalClient;
 import wtf.opal.client.binding.BindingService;
@@ -48,7 +47,22 @@ public final class SaveUtility {
     }
 
     private static String sanitizeConfigName(final String name) {
-        return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (name == null) {
+            return "";
+        }
+
+        final String normalizedName = name.trim().toLowerCase(Locale.ROOT);
+        final StringBuilder builder = new StringBuilder(normalizedName.length());
+        for (int i = 0; i < normalizedName.length(); i++) {
+            final char character = normalizedName.charAt(i);
+            if (Character.isLetterOrDigit(character) || character == '_' || character == '-' || character == '.') {
+                builder.append(character);
+            } else if (Character.isWhitespace(character)) {
+                builder.append('_');
+            }
+        }
+
+        return builder.toString();
     }
 
     private static Path getConfigPath(final String name) {
@@ -221,21 +235,21 @@ public final class SaveUtility {
 
     private static boolean applyConfig(final String jsonString) {
         try {
-            final List<?> jsonModules = GSON.fromJson(jsonString, List.class);
-            if (jsonModules == null) {
+            final JsonElement rootElement = JsonParser.parseString(jsonString);
+            if (!rootElement.isJsonArray()) {
                 return false;
             }
 
-            for (final Object jsonModuleObj : jsonModules) {
-                if (!(jsonModuleObj instanceof LinkedTreeMap<?, ?> jsonModule)) {
+            for (final JsonElement jsonModuleElement : rootElement.getAsJsonArray()) {
+                if (!jsonModuleElement.isJsonObject()) {
                     continue;
                 }
 
-                final String jsonModuleID = String.valueOf(jsonModule.get("name"));
+                final JsonObject jsonModule = jsonModuleElement.getAsJsonObject();
+                final String jsonModuleID = getString(jsonModule, "name", "id", "module");
                 final Module clientModule;
-                final Boolean jsonEnabled = (Boolean) jsonModule.get("enabled");
-                final Boolean jsonVisible = (Boolean) jsonModule.get("visible");
-                final List<?> jsonProperties = (List<?>) jsonModule.get("properties");
+                final Boolean jsonEnabled = getBoolean(jsonModule.get("enabled"));
+                final Boolean jsonVisible = getBoolean(jsonModule.get("visible"));
 
                 try {
                     clientModule = OpalClient.getInstance().getModuleRepository().getModule(jsonModuleID);
@@ -250,20 +264,22 @@ public final class SaveUtility {
                     clientModule.setVisible(jsonVisible);
                 }
 
-                if (jsonProperties == null) {
+                final JsonElement jsonPropertiesElement = jsonModule.get("properties");
+                if (jsonPropertiesElement == null || !jsonPropertiesElement.isJsonArray()) {
                     continue;
                 }
 
-                for (final Object jsonPropertyObj : jsonProperties) {
-                    if (!(jsonPropertyObj instanceof LinkedTreeMap<?, ?> jsonProperty)) {
+                for (final JsonElement jsonPropertyElement : jsonPropertiesElement.getAsJsonArray()) {
+                    if (!jsonPropertyElement.isJsonObject()) {
                         continue;
                     }
 
-                    final String propertyName = String.valueOf(jsonProperty.get("name"));
-                    final Object propertyValue = jsonProperty.get("value");
+                    final JsonObject jsonProperty = jsonPropertyElement.getAsJsonObject();
+                    final String propertyName = getString(jsonProperty, "name", "id");
+                    final Object propertyValue = GSON.fromJson(jsonProperty.get("value"), Object.class);
                     final Property<?> clientProperty = findProperty(clientModule, propertyName);
                     if (clientProperty != null) {
-                        clientProperty.applyValue(propertyValue);
+                        applyPropertyValue(clientProperty, propertyValue);
                         continue;
                     }
 
@@ -275,6 +291,40 @@ public final class SaveUtility {
             e.printStackTrace();
         }
         return false;
+    }
+
+    private static void applyPropertyValue(final Property<?> property, final Object propertyValue) {
+        try {
+            property.applyValue(propertyValue);
+        } catch (RuntimeException exception) {
+            exception.printStackTrace();
+        }
+    }
+
+    private static String getString(final JsonObject object, final String... names) {
+        for (final String name : names) {
+            final JsonElement value = object.get(name);
+            if (value != null && !value.isJsonNull()) {
+                return value.getAsString();
+            }
+        }
+        return "";
+    }
+
+    private static Boolean getBoolean(final JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+        if (element.isJsonPrimitive()) {
+            final JsonPrimitive primitive = element.getAsJsonPrimitive();
+            if (primitive.isBoolean()) {
+                return primitive.getAsBoolean();
+            }
+            if (primitive.isString()) {
+                return Boolean.parseBoolean(primitive.getAsString());
+            }
+        }
+        return null;
     }
 
     private static Property<?> findProperty(final Module module, final String propertyName) {

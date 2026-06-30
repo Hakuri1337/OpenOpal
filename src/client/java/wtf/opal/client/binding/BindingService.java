@@ -19,7 +19,7 @@ public final class BindingService {
     }
 
     public void clearBindings(final IBindable bindable) {
-        bindingMap.entries().removeIf(entry -> entry.getValue() == bindable);
+        bindingMap.entries().removeIf(entry -> entry.getValue().equals(bindable));
     }
 
     public void dispatch(final int code, final InputType inputType) {

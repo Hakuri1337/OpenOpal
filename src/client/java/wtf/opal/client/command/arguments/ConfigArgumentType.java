@@ -7,8 +7,10 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.command.CommandSource;
-import wtf.opal.utility.data.Config;
+import wtf.opal.utility.data.SaveUtility;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public final class ConfigArgumentType implements ArgumentType<String> {
@@ -20,7 +22,7 @@ public final class ConfigArgumentType implements ArgumentType<String> {
     }
 
     public static String get(final CommandContext<?> context) {
-        return context.getArgument("config", String.class);
+        return context.getArgument("config_name", String.class);
     }
 
     private ConfigArgumentType() {
@@ -33,6 +35,11 @@ public final class ConfigArgumentType implements ArgumentType<String> {
 
     @Override
     public <S> CompletableFuture<Suggestions> listSuggestions(final CommandContext<S> context, final SuggestionsBuilder builder) {
-        return null;
+        return CommandSource.suggestMatching(SaveUtility.listConfigs(), builder);
+    }
+
+    @Override
+    public Collection<String> getExamples() {
+        return List.of("default");
     }
 }
