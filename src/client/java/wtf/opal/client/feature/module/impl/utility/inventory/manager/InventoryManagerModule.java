@@ -59,7 +59,9 @@ public final class InventoryManagerModule extends Module {
     private boolean justClosedInventory;
     private boolean performingAction;
     private boolean releasingPendingPackets;
+    private boolean pendingSyntheticClose;
     private final Queue<Packet<?>> pendingPackets = new ConcurrentLinkedQueue<>();
+    private final Stopwatch bufferedPacketStopwatch = new Stopwatch(0L);
 
     public InventoryManagerModule() {
         super("Inventory Manager", "Manages your inventory.", ModuleCategory.UTILITY);
@@ -76,7 +78,9 @@ public final class InventoryManagerModule extends Module {
         this.justClosedInventory = false;
         this.performingAction = false;
         this.releasingPendingPackets = false;
+        this.pendingSyntheticClose = false;
         this.pendingPackets.clear();
+        this.bufferedPacketStopwatch.setTime(0L);
         super.onDisable();
     }
 
@@ -127,6 +131,7 @@ public final class InventoryManagerModule extends Module {
         if (event.getPacket() instanceof CloseHandledScreenC2SPacket closeScreen
                 && closeScreen.getSyncId() == mc.player.playerScreenHandler.syncId) {
             event.setCancelled();
+            pendingSyntheticClose = false;
             pendingPackets.add(closeScreen);
         }
     }
@@ -154,7 +159,7 @@ public final class InventoryManagerModule extends Module {
             return;
         }
 
-        if (pendingPackets.isEmpty()) {
+        if (pendingPackets.isEmpty() && !pendingSyntheticClose) {
             if (justClosedInventory) {
                 justClosedInventory = false;
             }
@@ -180,7 +185,11 @@ public final class InventoryManagerModule extends Module {
     }
 
     public boolean canMove(final long delay) {
-        return delay <= 0L || stopwatch.hasTimeElapsed(delay);
+        return stopwatch.hasTimeElapsed(InventoryUtility.withAcaQuickMoveDelay(delay));
+    }
+
+    private boolean canPickupMove(final long delay) {
+        return stopwatch.hasTimeElapsed(InventoryUtility.withAcaPickupDelay(delay));
     }
 
     private void runInventoryManager(final boolean autoArmorOnly, final long actionDelay) {
@@ -344,7 +353,7 @@ public final class InventoryManagerModule extends Module {
     }
 
     private boolean hasBufferedInventoryPackets() {
-        return !pendingPackets.isEmpty();
+        return !pendingPackets.isEmpty() || pendingSyntheticClose;
     }
 
     public boolean isPerformingAction() {
@@ -352,20 +361,37 @@ public final class InventoryManagerModule extends Module {
     }
 
     private void releasePendingPackets() {
-        if (mc.player == null || mc.getNetworkHandler() == null || pendingPackets.isEmpty()) {
+        if (mc.player == null || mc.getNetworkHandler() == null || (!pendingSyntheticClose && pendingPackets.isEmpty())) {
+            return;
+        }
+
+        final Packet<?> nextPacket = pendingPackets.peek();
+        final long releaseDelay = nextPacket instanceof ClickSlotC2SPacket
+                ? InventoryUtility.ACA_MULTIINTERACTION_PICKUP_DELAY_MS
+                : InventoryUtility.ACA_INVENTORY_CLOSE_DELAY_MS;
+        if (!bufferedPacketStopwatch.hasTimeElapsed(releaseDelay)) {
             return;
         }
 
         releasingPendingPackets = true;
         try {
-            Packet<?> packet;
-            while ((packet = pendingPackets.poll()) != null) {
+            final Packet<?> packet = pendingPackets.poll();
+            if (packet != null) {
                 OutboundNetworkBlockage.sendPacketDirect(packet);
+                if (packet instanceof ClickSlotC2SPacket && pendingPackets.isEmpty()) {
+                    pendingSyntheticClose = true;
+                } else if (packet instanceof CloseHandledScreenC2SPacket) {
+                    pendingSyntheticClose = false;
+                    justClosedInventory = true;
+                    sprintReleaseTicks = 0;
+                }
+            } else if (pendingSyntheticClose) {
+                OutboundNetworkBlockage.sendPacketDirect(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));
+                pendingSyntheticClose = false;
+                justClosedInventory = true;
+                sprintReleaseTicks = 0;
             }
-
-            OutboundNetworkBlockage.sendPacketDirect(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));
-            justClosedInventory = true;
-            sprintReleaseTicks = 0;
+            bufferedPacketStopwatch.reset();
         } finally {
             releasingPendingPackets = false;
         }
@@ -470,7 +496,7 @@ public final class InventoryManagerModule extends Module {
     }
 
     private boolean tryCompletePendingOffhandPlace(final PlayerScreenHandler playerHandler, final long actionDelay) {
-        if (!canMove(actionDelay)) {
+        if (!canPickupMove(actionDelay)) {
             return false;
         }
 
@@ -508,6 +534,10 @@ public final class InventoryManagerModule extends Module {
                 }
 
                 if (offhandStack.getCount() + bestGoldenApple.getCount() <= offhandStack.getMaxCount()) {
+                    if (!canPickupMove(actionDelay)) {
+                        return false;
+                    }
+
                     InventoryUtility.pickup(playerHandler, InventoryUtility.getScreenSlot(slot));
                     pendingOffhandPlace = true;
                     stopwatch.reset();

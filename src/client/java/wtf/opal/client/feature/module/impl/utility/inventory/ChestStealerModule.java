@@ -53,7 +53,7 @@ ChestStealerModule extends Module {
     private final BooleanProperty ghostHand = new BooleanProperty("Ghost Hand", false);
     private final BooleanProperty ghostDebug = new BooleanProperty("Ghost Debug", false).hideIf(() -> !ghostHand.getValue());
 
-    private final BoundedNumberProperty delay = new BoundedNumberProperty("Delay", 50, 100, 0, 400, 5);
+    private final BoundedNumberProperty delay = new BoundedNumberProperty("Delay", 135, 190, 0, 400, 5);
 
     private long ghostLastInteractTime;
     private boolean ghostSessionActive;
@@ -117,7 +117,7 @@ ChestStealerModule extends Module {
 
         if (!container.getTitle().getString().toLowerCase().contains("chest")) return;
         if (chestInventory.isEmpty() || InventoryUtility.isInventoryFull()) {
-            container.close();
+            closeContainerWhenSafe(container);
             return;
         }
 
@@ -153,7 +153,7 @@ ChestStealerModule extends Module {
             }
 
             if (!hasValuableLeft) {
-                container.close();
+                closeContainerWhenSafe(container);
             }
         }
     }
@@ -167,7 +167,7 @@ ChestStealerModule extends Module {
     }
 
     public boolean isRateLimited() {
-        final long delayMs = delay.getMidpoint().longValue();
+        final long delayMs = InventoryUtility.withAcaQuickMoveDelay(delay.getMidpoint().longValue());
         return delayMs > 0L && !stopwatch.hasTimeElapsed(delayMs);
     }
 
@@ -288,8 +288,14 @@ ChestStealerModule extends Module {
     }
 
     public boolean canMove() {
-        final long delayMs = delay.getRandomValue().longValue();
+        final long delayMs = InventoryUtility.withAcaQuickMoveDelay(delay.getRandomValue().longValue());
         return delayMs == 0 || stopwatch.hasTimeElapsed(delayMs);
+    }
+
+    private void closeContainerWhenSafe(final GenericContainerScreen container) {
+        if (stopwatch.hasTimeElapsed(InventoryUtility.ACA_INVENTORY_CLOSE_DELAY_MS)) {
+            container.close();
+        }
     }
 
     private void updateGhostHandSession() {
