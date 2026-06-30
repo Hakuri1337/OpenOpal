@@ -1,4 +1,4 @@
-name: Fabric 1.21.11 Build
+name: Fabric 1.21.10 Build
 on: [push, pull_request]
 
 jobs:
@@ -23,5 +23,5 @@ jobs:
       - name: Upload Build
         uses: actions/upload-artifact@v4
         with:
-          name: Opal-v2-1.21.11
+          name: Opal-v2-1.21.10
           path: build/libs/*.jar

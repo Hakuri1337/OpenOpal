@@ -27,7 +27,7 @@ public final class GrimCriticals extends ModuleMode<CriticalsModule> {
 
         final boolean wasSprinting = mc.player.isSprinting();
         if (!event.isDead()) {
-            mc.player.resetTicksSinceLastAttack();
+            mc.player.resetLastAttackedTicks();
             this.module.debugDamage("Grim", target, true, "reset attack ticks, sprint=" + wasSprinting);
         } else if (wasSprinting) {
             mc.options.sprintKey.setPressed(false);

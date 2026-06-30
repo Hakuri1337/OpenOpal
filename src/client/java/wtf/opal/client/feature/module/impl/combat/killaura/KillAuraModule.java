@@ -292,7 +292,7 @@ public final class KillAuraModule extends Module {
         WorldRenderer rc = new WorldRenderer(vcp);
 
         if (settings.getVisuals().getProperty("Box").getValue()) {
-            final Vec3d position = MathUtility.interpolate(target, event.tickDelta()).add(mc.gameRenderer.getCamera().getCameraPos()).subtract(0.25, 0, 0.25);
+            final Vec3d position = MathUtility.interpolate(target, event.tickDelta()).add(mc.gameRenderer.getCamera().getPos()).subtract(0.25, 0, 0.25);
             final Vec3d dimensions = new Vec3d(target.getWidth(), target.getHeight(), target.getWidth());
             rc.drawFilledCube(
                     event.matrixStack(),
@@ -303,7 +303,7 @@ public final class KillAuraModule extends Module {
         }
 
         if (settings.getVisuals().getProperty("Halo").getValue()) {
-            final Vec3d pos = MathUtility.interpolate(target, event.tickDelta()).add(mc.gameRenderer.getCamera().getCameraPos());
+            final Vec3d pos = MathUtility.interpolate(target, event.tickDelta()).add(mc.gameRenderer.getCamera().getPos());
             final double now = System.currentTimeMillis() / 1000.0;
             final double t = now * 4.0;
             final double baseY = pos.y + target.getHeight() * 0.5;

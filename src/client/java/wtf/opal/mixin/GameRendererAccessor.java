@@ -4,7 +4,7 @@ import net.minecraft.client.gui.render.GuiRenderer;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.fog.FogRenderer;
-import net.minecraft.client.util.memory.ObjectPool;
+import net.minecraft.client.util.Pool;
 import net.minecraft.client.util.math.MatrixStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 @Mixin(GameRenderer.class)
 public interface GameRendererAccessor {
     @Accessor
-    ObjectPool getPool();
+    Pool getPool();
 
     @Invoker
     float callGetFov(final Camera camera, final float tickDelta, final boolean changingFov);

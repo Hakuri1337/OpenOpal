@@ -83,8 +83,8 @@ public final class MoveUtility {
     public static float getMoveYaw() {
         final Vector2f from = new Vector2f((float) mc.player.lastX, (float) mc.player.lastZ),
                 to = new Vector2f((float) mc.player.getX(), (float) mc.player.getZ()),
-                diff = new Vector2f(to.x() - from.x(), to.y() - from.y());
-        return (float) Math.toDegrees((Math.atan2(-diff.x(), diff.y()) + (MathHelper.PI * 2)) % (MathHelper.PI * 2));
+                diff = new Vector2f(to.getX() - from.getX(), to.getY() - from.getY());
+        return (float) Math.toDegrees((Math.atan2(-diff.getX(), diff.getY()) + (MathHelper.PI * 2)) % (MathHelper.PI * 2));
     }
 
     public static float getDirectionDegrees() {
