@@ -66,7 +66,7 @@ public abstract class BlockCollisionSpliteratorMixin<T> extends AbstractIterator
 
     @Inject(
             method = "computeNext",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/BlockCollisionSpliterator;endOfData()Ljava/lang/Object;"),
+            at = @At(value = "INVOKE", target = "Lcom/google/common/collect/AbstractIterator;endOfData()Ljava/lang/Object;"),
             cancellable = true
     )
     private void hookComputeNextReturn(CallbackInfoReturnable<T> cir) {
