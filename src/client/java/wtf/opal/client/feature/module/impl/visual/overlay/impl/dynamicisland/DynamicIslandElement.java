@@ -6,7 +6,6 @@ import wtf.opal.client.feature.module.impl.visual.overlay.IOverlayElement;
 import wtf.opal.client.feature.module.impl.visual.overlay.OverlayModule;
 import wtf.opal.client.feature.module.impl.visual.overlay.impl.dynamicisland.preset.DefaultIsland;
 import wtf.opal.client.renderer.NVGRenderer;
-import wtf.opal.client.renderer.liquidglass.LiquidGlassRenderer;
 import wtf.opal.event.EventDispatcher;
 import wtf.opal.event.impl.client.ModuleToggleEvent;
 import wtf.opal.event.subscriber.IEventSubscriber;
@@ -128,7 +127,8 @@ public final class DynamicIslandElement implements IOverlayElement, IEventSubscr
     }
 
     public void renderIslandBackground(float x, float y, float width, float height) {
-        LiquidGlassRenderer.drawPill(x, y, width, height, 13, Math.min(1, this.heightAnimation.getProgress()));
+        NVGRenderer.roundedRect(x + 1, y + 1, width - 2, height - 2, 13, NVGRenderer.BLUR_PAINT);
+        NVGRenderer.roundedRect(x + 1, y + 1, width - 2, height - 2, 13, 0x80090909);
     }
 
     private final Animation xAnimation = new Animation(Easing.DYNAMIC_ISLAND, 250);

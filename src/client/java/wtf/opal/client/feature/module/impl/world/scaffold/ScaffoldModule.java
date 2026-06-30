@@ -76,8 +76,6 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
     private static final double[] FOOT_OFFSETS = {0.0D, 0.301D, -0.301D};
     private static final double[] LOOKAHEAD_STEPS = {0.0D, 0.35D, 0.7D, 1.05D, 1.4D};
     private static final double[] HIT_OFFSETS = {0.0D, 0.24D, -0.24D};
-    private static final double SUPPORT_SAMPLE_RADIUS = 0.301D;
-    private static final double EDGE_SUPPORT_DEPTH = 0.08D;
 
     private final ScaffoldIsland dynamicIsland = new ScaffoldIsland(this);
     private final ScaffoldSettings settings = new ScaffoldSettings(this);
@@ -543,16 +541,15 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
         }
 
         final PlacementHand placementHand = this.getPlacementHand(!this.isTellyMode());
-        final BlockHitResult freshHitResult = this.getFreshPlacementHit(hitResult);
-        if (placementHand == null || freshHitResult == null || !this.isValidPlacementHit(freshHitResult, this.isTellyMode(), placementHand)) {
+        if (placementHand == null || !this.isValidPlacementHit(hitResult, this.isTellyMode(), placementHand)) {
             return false;
         }
 
         if (this.settings.isInteractBeforePlace()) {
-            this.sendInteractBlockBeforePlace(placementHand.hand, freshHitResult);
+            this.sendInteractBlockBeforePlace(placementHand.hand, hitResult);
         }
 
-        final ActionResult result = mc.interactionManager.interactBlock(mc.player, placementHand.hand, freshHitResult);
+        final ActionResult result = mc.interactionManager.interactBlock(mc.player, placementHand.hand, hitResult);
         if (!result.isAccepted()) {
             return false;
         }
@@ -563,27 +560,8 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
             mc.player.swingHand(placementHand.hand);
         }
         this.placeTick = mc.player.age;
-        EventDispatcher.dispatch(new BlockPlacedEvent(freshHitResult));
+        EventDispatcher.dispatch(new BlockPlacedEvent(hitResult));
         return true;
-    }
-
-    private BlockHitResult getFreshPlacementHit(final BlockHitResult plannedHitResult) {
-        if (plannedHitResult == null || mc.player == null || mc.world == null) {
-            return null;
-        }
-
-        final float yaw = RotationHelper.getClientHandler().getYawOr(mc.player.getYaw());
-        final float pitch = RotationHelper.getClientHandler().getPitchOr(mc.player.getPitch());
-        final HitResult raycast = RaycastUtility.raycastBlock(mc.player.getBlockInteractionRange(), 1.0F, false, yaw, pitch);
-        if (!(raycast instanceof BlockHitResult freshHitResult)
-                || freshHitResult.getType() != HitResult.Type.BLOCK
-                || !freshHitResult.getBlockPos().equals(plannedHitResult.getBlockPos())
-                || freshHitResult.getSide() != plannedHitResult.getSide()
-                || !this.isValidPlacementSupport(freshHitResult)) {
-            return null;
-        }
-
-        return freshHitResult;
     }
 
     public boolean canPlaceAtHit(final BlockHitResult hitResult, final boolean checkPredictedCollision) {
@@ -805,9 +783,6 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
     private BlockData getBlockData() {
         final BlockPos base = mc.player.getBlockPos().withY(sameYPos).down();
         for (final BlockPos target : this.getTargetBlockCandidates(base, mc.player)) {
-            if (!this.needsPlacement(target, mc.player)) {
-                continue;
-            }
             final BlockData data = this.getBlockData(target, mc.player);
             if (data != null) {
                 return data;
@@ -884,16 +859,13 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
             if (checked++ >= TELLY_TARGET_CANDIDATE_BUDGET) {
                 break;
             }
-            if (!this.needsPlacement(target, mc.player)) {
-                continue;
-            }
 
             final BlockData data = this.getDirectBlockData(target, eyePos);
             if (data != null) {
                 return data;
             }
         }
-        return this.needsPlacement(base, mc.player) ? this.getBlockData(base, mc.player) : null;
+        return this.getBlockData(base, mc.player);
     }
 
     private BlockData getDirectBlockData(final BlockPos targetBlockPos, final Vec3d eyePos) {
@@ -977,9 +949,6 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
         if (!mc.world.getBlockState(targetBlockPos).isReplaceable()) {
             return null;
         }
-        if (entity == mc.player && !this.needsPlacement(targetBlockPos, entity)) {
-            return null;
-        }
 
         final boolean canUseCache = entity == mc.player;
         if (canUseCache
@@ -997,99 +966,6 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
             this.lastSearchAge = entity.age;
         }
         return data;
-    }
-
-    private boolean needsPlacement(final BlockPos targetBlockPos, final PlayerEntity entity) {
-        if (mc.world == null || entity == null || !this.isReplaceable(targetBlockPos)) {
-            return false;
-        }
-        if (this.isTellyMode()) {
-            return this.isTellyPlacementNeeded(targetBlockPos, entity);
-        }
-        return this.isSupportPlacementNeeded(targetBlockPos, entity, false);
-    }
-
-    private boolean isTellyPlacementNeeded(final BlockPos targetBlockPos, final PlayerEntity entity) {
-        if (!entity.isOnGround()) {
-            return this.isSupportPlacementNeeded(targetBlockPos, entity, true);
-        }
-        final Vec3d velocity = entity.getVelocity();
-        final Box predictedBox = entity.getBoundingBox().offset(velocity.x, 0.0D, velocity.z);
-        return this.isFootSupportTarget(targetBlockPos, predictedBox)
-                && this.isApproachingUnsupportedEdge(entity, predictedBox);
-    }
-
-    private boolean isSupportPlacementNeeded(final BlockPos targetBlockPos, final PlayerEntity entity, final boolean airborne) {
-        final Box currentBox = entity.getBoundingBox();
-        final Vec3d velocity = entity.getVelocity();
-        final Box predictedBox = currentBox.offset(velocity.x, airborne ? velocity.y : 0.0D, velocity.z);
-        if (!this.isFootSupportTarget(targetBlockPos, currentBox) && !this.isFootSupportTarget(targetBlockPos, predictedBox)) {
-            return false;
-        }
-
-        return !this.hasSupportBelow(currentBox)
-                || !this.hasSupportBelow(predictedBox)
-                || this.isApproachingUnsupportedEdge(entity, predictedBox);
-    }
-
-    private boolean isFootSupportTarget(final BlockPos targetBlockPos, final Box box) {
-        final int supportY = MathHelper.floor(box.minY - EDGE_SUPPORT_DEPTH);
-        if (targetBlockPos.getY() != supportY) {
-            return false;
-        }
-
-        for (final double x : this.getSupportSampleCoordinates(box.minX, box.maxX)) {
-            for (final double z : this.getSupportSampleCoordinates(box.minZ, box.maxZ)) {
-                if (BlockPos.ofFloored(x, supportY, z).equals(targetBlockPos)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean hasSupportBelow(final Box box) {
-        final int supportY = MathHelper.floor(box.minY - EDGE_SUPPORT_DEPTH);
-        for (final double x : this.getSupportSampleCoordinates(box.minX, box.maxX)) {
-            for (final double z : this.getSupportSampleCoordinates(box.minZ, box.maxZ)) {
-                final BlockPos pos = BlockPos.ofFloored(x, supportY, z);
-                if (this.hasSolidSupportAt(pos)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean hasSolidSupportAt(final BlockPos pos) {
-        if (mc.world == null || mc.world.isOutOfHeightLimit(pos.getY())) {
-            return false;
-        }
-        final BlockState state = mc.world.getBlockState(pos);
-        return !state.isAir()
-                && !state.isReplaceable()
-                && state.getFluidState().isEmpty()
-                && !state.getCollisionShape(mc.world, pos).isEmpty();
-    }
-
-    private boolean isApproachingUnsupportedEdge(final PlayerEntity entity, final Box predictedBox) {
-        if (!entity.isOnGround() || !MoveUtility.isMoving()) {
-            return false;
-        }
-        final Vec3d velocity = entity.getVelocity();
-        final double speed = Math.max(0.35D, Math.min(0.85D, Math.hypot(velocity.x, velocity.z) * 2.0D));
-        final float yaw = (float) Math.toRadians(MoveUtility.getDirectionDegrees());
-        final Box lookaheadBox = predictedBox.offset(-MathHelper.sin(yaw) * speed, 0.0D, MathHelper.cos(yaw) * speed);
-        return !this.hasSupportBelow(lookaheadBox);
-    }
-
-    private double[] getSupportSampleCoordinates(final double min, final double max) {
-        final double center = (min + max) * 0.5D;
-        return new double[]{
-                center,
-                Math.max(min + 1.0E-3D, center - SUPPORT_SAMPLE_RADIUS),
-                Math.min(max - 1.0E-3D, center + SUPPORT_SAMPLE_RADIUS)
-        };
     }
 
     private boolean isCachedBlockDataUsable(final BlockData data, final BlockPos targetBlockPos) {
