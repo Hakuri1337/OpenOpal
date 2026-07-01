@@ -5,6 +5,7 @@ import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.InstantRot
 import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.HeypixelRotationModel;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.LinearRotationModel;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.OrganicRotationModel;
+import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.SidewaysRotationModel;
 
 import java.util.function.Function;
 
@@ -12,7 +13,8 @@ public enum EnumRotationModel {
     INSTANT("Instant", r -> InstantRotationModel.INSTANCE),
     HEYPIXEL("Heypixel", r -> new HeypixelRotationModel(r.getMaxAngle())),
     LINEAR("Linear", r -> new LinearRotationModel(r.getMaxAngle())),
-    ORGANIC("Organic", r -> new OrganicRotationModel(r.getMaxAngle(), r.getDriftIntensity(), r.getJitterIntensity()));
+    ORGANIC("Organic", r -> new OrganicRotationModel(r.getMaxAngle(), r.getDriftIntensity(), r.getJitterIntensity())),
+    SIDEWAYS("Sideways", r -> new SidewaysRotationModel(r.getMaxAngle()));
 
     private final String name;
     private final Function<RotationProperty, IRotationModel> modelSupplier;

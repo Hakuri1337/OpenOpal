@@ -135,6 +135,7 @@ public final class OpalClient {
                     new FastUseModule(),
                     new NoFallModule(),
                     new AutoMLGModule(),
+                    new BucketHelperModule(),
                     new ChestStealerModule(),
                     new InventoryManagerModule(),
                     new AutoArmorModule(),

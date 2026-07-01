@@ -58,4 +58,8 @@ public final class RotationProperty {
         return this.modelProperty.getValue().supply(this);
     }
 
+    public boolean isModel(final EnumRotationModel model) {
+        return this.modelProperty.getValue() == model;
+    }
+
 }

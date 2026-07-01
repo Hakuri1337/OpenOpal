@@ -27,17 +27,22 @@ import wtf.opal.client.feature.helper.impl.LocalDataWatch;
 import wtf.opal.client.feature.helper.impl.player.mouse.MouseButton;
 import wtf.opal.client.feature.helper.impl.player.mouse.MouseHelper;
 import wtf.opal.client.feature.helper.impl.player.rotation.RotationHelper;
+import wtf.opal.client.feature.helper.impl.player.rotation.handler.RotationMouseHandler;
+import wtf.opal.client.feature.helper.impl.player.rotation.model.EnumRotationModel;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.IRotationModel;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.HypixelRotationModel;
+import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.InstantRotationModel;
 import wtf.opal.client.feature.helper.impl.player.slot.SlotHelper;
 import wtf.opal.client.feature.helper.impl.player.swing.SwingDelay;
 import wtf.opal.client.feature.helper.impl.render.FadingBlockHelper;
 import wtf.opal.client.feature.helper.impl.server.impl.HypixelServer;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
+import wtf.opal.client.feature.module.impl.movement.StuckModule;
 import wtf.opal.client.feature.module.impl.movement.flight.FlightModule;
 import wtf.opal.client.feature.module.impl.movement.longjump.LongJumpModule;
 import wtf.opal.client.feature.module.impl.visual.overlay.impl.dynamicisland.IslandTrigger;
+import wtf.opal.client.feature.module.impl.world.scaffold.mode.HeypixelScaffold;
 import wtf.opal.client.feature.module.repository.ModuleRepository;
 import wtf.opal.client.feature.simulation.PlayerSimulation;
 import wtf.opal.client.renderer.world.WorldRenderer;
@@ -62,6 +67,7 @@ import java.util.List;
 import static wtf.opal.client.Constants.mc;
 
 public final class ScaffoldModule extends Module implements IslandTrigger {
+    private static final Direction[] DIRECTIONS = Direction.values();
     private static final double MAX_PLACEMENT_DISTANCE_SQUARED = 20.25D;
     private static final int NORMAL_SEARCH_DEPTH = 4;
     private static final int TELLY_SEARCH_DEPTH = 3;
@@ -85,6 +91,14 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     private Vec3d preExpandPos;
     private RaytracedRotation rotation;
+    private boolean skipTickRecoveryActive;
+    private boolean skipTickRecoveryFailed;
+    private int skipTickRecoveryCandidateTicks;
+    private BlockPos skipTickRecoveryBlockPos;
+    private Direction skipTickRecoveryFace;
+    private boolean upTellyBypassActive;
+    private boolean upTellyBypassRecovering;
+    private boolean upTellyBypassPendingGroundJump;
 
     private Map<Integer, Integer> realStackSizeMap;
     private int autoJumpTicks;
@@ -104,15 +118,28 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     @Override
     protected void onDisable() {
+        RotationHelper.getHandler().reset();
+        SlotHelper.getInstance().stop();
         this.dynamicIsland.onDisable();
         this.realStackSizeMap = null;
         this.intelligentRotation = null;
         this.placeTick = 0;
+        this.rotation = null;
+        this.blockCache = null;
         this.recentPlacedBlocks.clear();
         this.lastPlacedBlocks.clear();
         this.lastSearchOrigin = null;
         this.lastSearchData = null;
         this.lastSearchAge = -1;
+        this.skipTickRecoveryActive = false;
+        this.skipTickRecoveryFailed = false;
+        this.skipTickRecoveryCandidateTicks = 0;
+        this.skipTickRecoveryBlockPos = null;
+        this.skipTickRecoveryFace = null;
+        this.upTellyBypassActive = false;
+        this.upTellyBypassRecovering = false;
+        this.upTellyBypassPendingGroundJump = false;
+        SkipTickUtility.reset();
         this.resetAutoJumpState();
 
         super.onDisable();
@@ -129,6 +156,13 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
         this.lastSearchData = null;
         this.lastSearchAge = -1;
         this.resetAutoJumpState();
+        this.skipTickRecoveryFailed = false;
+        this.skipTickRecoveryCandidateTicks = 0;
+        this.skipTickRecoveryBlockPos = null;
+        this.skipTickRecoveryFace = null;
+        this.upTellyBypassActive = false;
+        this.upTellyBypassRecovering = false;
+        this.upTellyBypassPendingGroundJump = false;
 
         this.realStackSizeMap = new HashMap<>();
 
@@ -174,6 +208,22 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     @Subscribe(priority = 1)
     public void onMoveInput(final MoveInputEvent event) {
+        if (this.upTellyBypassRecovering) {
+            event.setForward(0.0F);
+            event.setSideways(0.0F);
+
+            if (this.upTellyBypassPendingGroundJump && mc.player.isOnGround()) {
+                ((LivingEntityAccessor) mc.player).setJumpingCooldown(0);
+                event.setJump(true);
+                this.upTellyBypassPendingGroundJump = false;
+            }
+            return;
+        }
+
+        if (this.isUitemsMode()) {
+            return;
+        }
+
         if (this.settings.getMode().is(ScaffoldSettings.Mode.TELLY)) {
             return;
         }
@@ -187,6 +237,10 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     @Subscribe(priority = 1)
     public void onHandleInput(final MouseHandleInputEvent event) {
+        if (this.isUitemsMode()) {
+            return;
+        }
+
         final MouseButton rightButton = MouseHelper.getRightButton();
         final boolean isBlock = this.hasHeldPlaceableBlock();
         if (this.blockCache != null) {
@@ -277,7 +331,26 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
             return;
         }
         this.pruneRecentPlacedBlocks();
-        final ScaffoldSettings.Mode effectiveMode = this.settings.getMode().getValue();
+        this.updateUitemsBypassState();
+        this.tryArmSkipTickRecovery();
+        this.updateSkipTickRecoveryGroundState();
+
+        final ScaffoldSettings.Mode effectiveMode = this.getEffectiveMode();
+        if (effectiveMode == ScaffoldSettings.Mode.HEYPIXEL || effectiveMode == ScaffoldSettings.Mode.HYPIXEL) {
+            return;
+        }
+
+        if (this.settings.isSameYEnabled() && this.settings.isAutoJump() && mc.player.isOnGround()
+                && LocalDataWatch.get().groundTicks > 0
+                && (this.upTellyBypassActive || this.upTellyBypassRecovering)) {
+            RotationMouseHandler handler = RotationHelper.getHandler();
+            if (rotation != null) {
+                handler.rotate(new Vec2f(mc.gameRenderer.getCamera().getYaw() + (44f * Math.signum(rotation.rotation().x)), mc.gameRenderer.getCamera().getPitch()), InstantRotationModel.INSTANCE);
+            }
+            this.rotation = null;
+            return;
+        }
+
         if (this.isTellyMode()) {
             this.updateHeldBlockSlot();
             return;
@@ -334,7 +407,9 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
         if (rotation != null) {
             if (!settings.isSnapRotationsEnabled() || blockCache != null) {
-                final IRotationModel model = (LocalDataWatch.get().getKnownServerManager().getCurrentServer() instanceof HypixelServer && effectiveMode == ScaffoldSettings.Mode.WATCHDOG) ? new HypixelRotationModel() : this.settings.createRotationModel();
+                final IRotationModel model = effectiveMode == this.settings.getMode().getValue()
+                        ? ((LocalDataWatch.get().getKnownServerManager().getCurrentServer() instanceof HypixelServer && effectiveMode == ScaffoldSettings.Mode.WATCHDOG) ? new HypixelRotationModel() : this.settings.createRotationModel())
+                        : this.createEffectiveRotationModel();
                 final Vec2f targetRotation = autoJumpActive ? this.getAutoJumpRotation(rotation.rotation()) : rotation.rotation();
                 RotationHelper.getHandler().rotate(
                         targetRotation,
@@ -1093,6 +1168,309 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     public ScaffoldSettings getSettings() {
         return settings;
+    }
+
+    public ScaffoldSettings.Mode getEffectiveMode() {
+        return (this.upTellyBypassActive || this.upTellyBypassRecovering)
+                ? ScaffoldSettings.Mode.VANILLA
+                : this.settings.getMode().getValue();
+    }
+
+    public IRotationModel createEffectiveRotationModel() {
+        return (this.upTellyBypassActive || this.upTellyBypassRecovering)
+                ? InstantRotationModel.INSTANCE
+                : this.settings.createRotationModel();
+    }
+
+    private boolean isUitemsMode() {
+        final ScaffoldSettings.Mode mode = this.getEffectiveMode();
+        return mode == ScaffoldSettings.Mode.HEYPIXEL || mode == ScaffoldSettings.Mode.HYPIXEL;
+    }
+
+    private void updateUitemsBypassState() {
+        final boolean shouldBypass = shouldUseUpTellyBypass();
+        if (shouldBypass) {
+            this.upTellyBypassActive = true;
+            this.upTellyBypassRecovering = false;
+            this.upTellyBypassPendingGroundJump = false;
+        } else if (this.upTellyBypassActive) {
+            this.upTellyBypassActive = false;
+            this.upTellyBypassRecovering = true;
+            this.upTellyBypassPendingGroundJump = true;
+        }
+
+        if (this.upTellyBypassRecovering && !this.upTellyBypassPendingGroundJump && mc.player != null && !mc.player.isOnGround()) {
+            this.upTellyBypassRecovering = false;
+        }
+    }
+
+    private boolean shouldUseUpTellyBypass() {
+        if (mc.player == null) {
+            return false;
+        }
+
+        if (!this.settings.isUpTellyBypass()) {
+            return false;
+        }
+
+        if (!this.settings.getMode().is(ScaffoldSettings.Mode.HEYPIXEL)) {
+            return false;
+        }
+
+        if (!this.settings.isRotationModel(EnumRotationModel.HEYPIXEL)) {
+            return false;
+        }
+
+        if (!this.settings.isTelly() || !mc.options.jumpKey.isPressed()) {
+            return false;
+        }
+
+        return mc.options.forwardKey.isPressed()
+                || mc.options.backKey.isPressed()
+                || mc.options.leftKey.isPressed()
+                || mc.options.rightKey.isPressed();
+    }
+
+    private void updateSkipTickRecoveryGroundState() {
+        final StuckModule stuckModule = OpalClient.getInstance().getModuleRepository().getModule(StuckModule.class);
+        if (!stuckModule.isEnabled() && !this.skipTickRecoveryActive) {
+            return;
+        }
+
+        boolean groundBelow = mc.player.isOnGround();
+        if (!groundBelow) {
+            for (double offset = 0.01; offset <= 1.5; offset += 0.5) {
+                if (!mc.world.getBlockState(BlockPos.ofFloored(mc.player.getX(), mc.player.getY() - offset, mc.player.getZ())).isAir()) {
+                    groundBelow = true;
+                    break;
+                }
+            }
+        }
+
+        if (groundBelow) {
+            if (stuckModule.isEnabled()) {
+                stuckModule.setEnabled(false);
+            }
+            this.skipTickRecoveryActive = false;
+            SkipTickUtility.reset();
+            this.skipTickRecoveryFailed = false;
+        }
+    }
+
+    private BlockPos findRecoveryBlock() {
+        if (mc.player == null || mc.world == null) return null;
+
+        BlockPos playerPos = mc.player.getBlockPos();
+        for (int y = 0; y >= -3; y--) {
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    BlockPos target = playerPos.add(x, y, z);
+                    if (mc.world.getBlockState(target).isReplaceable()) {
+                        for (Direction dir : DIRECTIONS) {
+                            BlockPos neighbor = target.offset(dir);
+                            if (!mc.world.getBlockState(neighbor).isAir() && !mc.world.getBlockState(neighbor).isReplaceable()) {
+                                return target;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private SkipTickRecoveryTarget findReadySkipTickRecoveryTarget() {
+        if (mc.player == null || mc.world == null) {
+            return null;
+        }
+
+        final Vec2f currentRotation = getCurrentClientRotation();
+        if (currentRotation == null) {
+            return null;
+        }
+
+        final Vec3d eyePos = mc.player.getEyePos();
+        final BlockPos playerPos = mc.player.getBlockPos();
+        SkipTickRecoveryTarget bestTarget = null;
+
+        for (int y = 0; y >= -3; y--) {
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    final BlockPos targetPos = playerPos.add(x, y, z);
+                    if (!mc.world.getBlockState(targetPos).isReplaceable()) {
+                        continue;
+                    }
+
+                    for (Direction direction : DIRECTIONS) {
+                        final BlockPos supportPos = targetPos.offset(direction);
+                        if (!isSolidAndNonInteractive(mc.world.getBlockState(supportPos), supportPos)) {
+                            continue;
+                        }
+
+                        final Direction face = direction.getOpposite();
+                        final Vec2f rotation = RotationUtility.getRotationFromBlock(supportPos, face);
+                        final float rotationDifference = RotationUtility.getRotationDifference(currentRotation, rotation);
+                        if (rotationDifference > 16.0F) {
+                            continue;
+                        }
+
+                        final Vec3d supportCenter = new Vec3d(
+                                supportPos.getX() + 0.5D,
+                                supportPos.getY() + 0.5D,
+                                supportPos.getZ() + 0.5D
+                        );
+                        final double dx = eyePos.getX() - supportCenter.getX();
+                        final double dy = eyePos.getY() - supportCenter.getY();
+                        final double dz = eyePos.getZ() - supportCenter.getZ();
+                        final double distanceSq = dx * dx + dy * dy + dz * dz;
+                        if (distanceSq > 4.85D * 4.85D) {
+                            continue;
+                        }
+
+                        if (bestTarget == null
+                                || distanceSq < bestTarget.distanceSq
+                                || (Math.abs(distanceSq - bestTarget.distanceSq) < 1.0E-4D
+                                && rotationDifference < bestTarget.rotationDifference)) {
+                            bestTarget = new SkipTickRecoveryTarget(targetPos, supportPos, face, rotation, rotationDifference, distanceSq);
+                        }
+                    }
+                }
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private Vec2f getCurrentClientRotation() {
+        if (mc.player == null) {
+            return null;
+        }
+        return RotationHelper.getClientHandler().getRotation();
+    }
+
+    private boolean isFallingIntoVoid() {
+        if (mc.player == null || mc.world == null) return false;
+        if (mc.player.getY() < -5) return true;
+
+        BlockPos pos = mc.player.getBlockPos();
+        for (int y = (int) mc.player.getY(); y > -64; y--) {
+            if (!mc.world.getBlockState(new BlockPos(pos.getX(), y, pos.getZ())).isAir()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean shouldTriggerSkipTickRecovery() {
+        if (mc.player == null || mc.world == null || this.skipTickRecoveryActive || this.skipTickRecoveryFailed) {
+            return false;
+        }
+
+        if (this.settings.getSelfRescueMode() != ScaffoldSettings.SelfRescueMode.SKIP_TICK) {
+            return false;
+        }
+
+        if (this.getEffectiveMode() == ScaffoldSettings.Mode.HEYPIXEL || this.getEffectiveMode() == ScaffoldSettings.Mode.HYPIXEL) {
+            final var activeMode = this.getActiveMode();
+            if (activeMode instanceof HeypixelScaffold heypixelScaffold && heypixelScaffold.shouldSuppressSkipTickRecoveryTrigger()) {
+                return false;
+            }
+        }
+
+        final boolean overVoid = isFallingIntoVoid();
+        final boolean fallingFast = mc.player.getVelocity().y < -0.35D;
+        final boolean hardFall = mc.player.fallDistance > 2.0F;
+        if (!overVoid && !fallingFast && !hardFall) {
+            return false;
+        }
+        return getPlaceableBlock() != -1 || mc.player.getMainHandStack().getItem() instanceof BlockItem;
+    }
+
+    private void tryArmSkipTickRecovery() {
+        if (!shouldTriggerSkipTickRecovery()) {
+            this.skipTickRecoveryCandidateTicks = 0;
+            this.skipTickRecoveryBlockPos = null;
+            this.skipTickRecoveryFace = null;
+            return;
+        }
+
+        if (this.settings.getMode().is(ScaffoldSettings.Mode.HEYPIXEL) && this.settings.isTelly() && mc.player != null && !mc.player.isOnGround() && mc.player.getVelocity().y > -0.16D) {
+            this.skipTickRecoveryCandidateTicks = 0;
+            this.skipTickRecoveryBlockPos = null;
+            this.skipTickRecoveryFace = null;
+            return;
+        }
+
+        if (findRecoveryBlock() == null) {
+            this.skipTickRecoveryCandidateTicks = 0;
+            this.skipTickRecoveryBlockPos = null;
+            this.skipTickRecoveryFace = null;
+            return;
+        }
+
+        final SkipTickRecoveryTarget recoveryTarget = findReadySkipTickRecoveryTarget();
+        if (recoveryTarget == null) {
+            this.skipTickRecoveryCandidateTicks = 0;
+            this.skipTickRecoveryBlockPos = null;
+            this.skipTickRecoveryFace = null;
+            return;
+        }
+
+        this.skipTickRecoveryBlockPos = recoveryTarget.supportPos();
+        this.skipTickRecoveryFace = recoveryTarget.face();
+
+        this.skipTickRecoveryCandidateTicks = Math.min(this.skipTickRecoveryCandidateTicks + 1, 2);
+        if (this.skipTickRecoveryCandidateTicks < 2) {
+            return;
+        }
+
+        if (this.skipTickRecoveryActive) {
+            return;
+        }
+
+        this.skipTickRecoveryActive = true;
+        this.skipTickRecoveryCandidateTicks = 0;
+        SkipTickUtility.reset();
+        SkipTickUtility.addSkipTicks(12);
+
+        final StuckModule stuckModule = OpalClient.getInstance().getModuleRepository().getModule(StuckModule.class);
+        if (stuckModule.isEnabled()) {
+            stuckModule.setEnabled(false);
+        }
+    }
+
+    public BlockPos getSkipTickRecoveryBlockPos() {
+        return skipTickRecoveryBlockPos;
+    }
+
+    public Direction getSkipTickRecoveryFace() {
+        return skipTickRecoveryFace;
+    }
+
+    public boolean isSkipTickRecoveryActive() {
+        return skipTickRecoveryActive;
+    }
+
+    public void setSkipTickRecoveryActive(final boolean skipTickRecoveryActive) {
+        this.skipTickRecoveryActive = skipTickRecoveryActive;
+        if (!skipTickRecoveryActive) {
+            SkipTickUtility.reset();
+        }
+        this.skipTickRecoveryCandidateTicks = 0;
+        this.skipTickRecoveryBlockPos = null;
+        this.skipTickRecoveryFace = null;
+    }
+
+    public void markSkipTickRecoveryFailed() {
+        this.skipTickRecoveryFailed = true;
+        this.skipTickRecoveryActive = false;
+        SkipTickUtility.reset();
+        this.skipTickRecoveryCandidateTicks = 0;
+        this.skipTickRecoveryBlockPos = null;
+        this.skipTickRecoveryFace = null;
+    }
+
+    private record SkipTickRecoveryTarget(BlockPos targetPos, BlockPos supportPos, Direction face, Vec2f rotation, float rotationDifference, double distanceSq) {
     }
 
     @Override

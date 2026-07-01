@@ -2,6 +2,7 @@ package wtf.opal.client.feature.helper.impl.player.rotation.handler;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec2f;
 import wtf.opal.client.feature.helper.impl.player.rotation.RotationHelper;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.IRotationModel;
@@ -23,12 +24,30 @@ public final class RotationMouseHandler implements IEventSubscriber {
     private IRotationModel rotationModel;
     private Vec2f targetRotation;
     private boolean active, forward;
+    private Vec2f originalRotation;
 
     @Subscribe
     public void onMouseUpdate(MouseUpdateEvent event) {
         if (this.tickRotation == null || this.targetRotation == null || mc.player == null || !this.active) {
             this.ticked = false;
             return;
+        }
+
+        final double sensitivityMultiplier = event.getSensitivityMultiplier();
+
+        if (this.originalRotation != null) {
+            final double deltaX = event.getDeltaX() * sensitivityMultiplier;
+            double deltaY = event.getDeltaY() * sensitivityMultiplier;
+
+            final double m = 0.15D;
+
+            if (mc.options.getInvertMouseY().getValue()) {
+                deltaY *= -1.0;
+            }
+            this.originalRotation = new Vec2f(
+                    this.originalRotation.x + (float) (deltaX * m),
+                    MathHelper.clamp(this.originalRotation.y + (float) (deltaY * m), -90.0F, 90.0F)
+            );
         }
 
         if (!this.forward) {
@@ -46,7 +65,6 @@ public final class RotationMouseHandler implements IEventSubscriber {
         } else {
             tickDelta = MinecraftClient.getInstance().getRenderTickCounter().getTickProgress(false);
         }
-        final double sensitivityMultiplier = event.getSensitivityMultiplier();
         final Vec2f tickedRotation = this.rotationModel.tick(this.tickRotation, this.targetRotation, tickDelta);
 
         final double deltaYaw = tickedRotation.x - mc.player.getYaw();
@@ -112,7 +130,25 @@ public final class RotationMouseHandler implements IEventSubscriber {
         this.targetRotation = clientHandler.getRotation();
     }
 
+    public void reset() {
+        if (this.active && this.originalRotation != null && mc.player != null) {
+            mc.player.setYaw(this.originalRotation.x);
+            mc.player.setPitch(this.originalRotation.y);
+            mc.player.setBodyYaw(this.originalRotation.x);
+            mc.player.setHeadYaw(this.originalRotation.x);
+        }
+        this.active = false;
+        this.forward = false;
+        this.targetRotation = null;
+        this.rotationModel = null;
+        this.unlockCursor = false;
+        this.originalRotation = null;
+    }
+
     public void rotate(Vec2f targetRotation, IRotationModel rotationModel) {
+        if (!this.active && mc.player != null) {
+            this.originalRotation = new Vec2f(mc.player.getYaw(), mc.player.getPitch());
+        }
         this.targetRotation = targetRotation;
         this.rotationModel = rotationModel;
         this.forward = true;

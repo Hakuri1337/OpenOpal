@@ -2,6 +2,7 @@ package wtf.opal.client.feature.module.impl.utility.disabler;
 
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
+import wtf.opal.client.feature.module.impl.utility.disabler.impl.CubecraftDisabler;
 import wtf.opal.client.feature.module.impl.utility.disabler.impl.HeypixelDisabler;
 import wtf.opal.client.feature.module.property.impl.mode.ModeProperty;
 
@@ -11,7 +12,7 @@ public final class DisablerModule extends Module {
     public DisablerModule() {
         super("Disabler", "Lessens anti-cheat strength.", ModuleCategory.UTILITY);
         addProperties(mode);
-        addModuleModes(mode, new HeypixelDisabler(this));
+        addModuleModes(mode, new HeypixelDisabler(this), new CubecraftDisabler(this));
     }
 
     @Override
@@ -20,7 +21,8 @@ public final class DisablerModule extends Module {
     }
 
     public enum Mode {
-        HEYPIXEL("Heypixel");
+        HEYPIXEL("Heypixel"),
+        CUBECRAFT("CubeCraft");
 
         private final String name;
 
