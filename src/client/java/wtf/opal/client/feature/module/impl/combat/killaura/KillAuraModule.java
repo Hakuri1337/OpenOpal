@@ -419,36 +419,7 @@ public final class KillAuraModule extends Module {
             return;
         }
 
-        final KillAuraSettings.AutoblockMode autoblockMode = this.settings.getAutoblockMode();
-        if (this.settings.isFakeAutoBlock()) {
-            releaseAutoblock();
-            return;
-        }
-
-        if (autoblockMode == KillAuraSettings.AutoblockMode.OFF) {
-            releaseAutoblock();
-            return;
-        }
-
-        if (OpalClient.getInstance().getModuleRepository().getModule(ScaffoldModule.class).isEnabled()) {
-            releaseAutoblock();
-            return;
-        }
-
-        final CurrentTarget target = this.targeting.getTarget();
-        if (target == null) {
-            releaseAutoblock();
-            return;
-        }
-
-        if (!mc.player.getMainHandStack().isIn(ItemTags.SWORDS)) {
-            releaseAutoblock();
-            return;
-        }
-
-        final MouseButton rightButton = MouseHelper.getRightButton();
-        rightButton.setPressed(true, 2);
-        rightButton.setShowSwings(false);
+        releaseAutoblock();
     }
 
     private void releaseAutoblock() {

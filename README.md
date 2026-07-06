@@ -1,62 +1,78 @@
 # OpenOpal
-***
-## Introduction
-This is a free and open-source hack client maked for Minecraft fabric 1.21.10 , which is based on the famous trashy Opal client but with Grim bypasses.
 
-## What did we(HakuriTeam) do?
+OpenOpal is a free and open-source Fabric client mod for Minecraft 1.21.10.
+It is based on Opal v2 and focuses on maintaining a usable modern client with
+combat, movement, utility, visual, and world modules adapted for the current
+codebase.
 
-[+]Grim Criticals
+## Status
 
-[+]Grim AttackReduce velocity(in fact in may be a NOXZ?)
+The project currently builds with:
 
-[+]Bad Backtrack and CrystalAura
+- Minecraft 1.21.10
+- Fabric Loader 0.19.2
+- Fabric Loom 1.14.6
+- Java 21
+- Yarn 1.21.10+build.3
 
-[+]GrimJump and GrimC0F(Full) NoSlow
+Recent work includes updates around KillAura, FakeAB, AntiKB/Velocity handling,
+AutoBucket, ChestStealer, InventoryMove, FastWeb, AntiTNT, TargetStrafe,
+NoSlow NoC0F, Scaffold-related utilities, ClickGUI behavior, configuration
+loading, and Dynamic Island visual options.
 
-[+]Stuck with so many VLs
+## Building
 
-[+]SKID Disabler form Margele's OpenZen
+Install JDK 21, then run:
 
-[+]Heypixel AntiBots and AntiStaff
+```powershell
+.\gradlew.bat build
+```
 
-[~]Fix Safewalk
+The remapped mod jar is generated under:
 
-[+]FakeAutoBlock For Higher Versions
+```text
+build/libs/
+```
 
-[~]Skid KillAura form OpenUitems(Another great opal-base client,u can have a try)
+On Linux or macOS, use:
 
-[~]Worse Scaffold (how silly the GPT-5.5 is!!!!!)
+```sh
+./gradlew build
+```
 
-AND MORE...
+## Configuration
 
-## How we write it?
-40% with the help of GPT-5.5 xhigh
+OpenOpal loads the default configuration on startup and saves it on shutdown.
+The in-game command system includes configuration commands through `.c`.
 
-19% with the help of Claude Opus 4.8
+Common commands include:
 
-1%  with the help of Claude Fable
+- `.t <module>` toggles a module.
+- `.bind <module> <key>` binds a module.
+- `.c` manages configs.
 
-40% Skidding and fight against the stupid LLMs by myself
+## Module Areas
 
+OpenOpal currently registers modules across these categories:
 
-We SKID codes from many places so we have to use GPL3.0 license because we forget that which project we skid form is use this damn license.
+- Combat: KillAura, Criticals, Velocity, Backtrack, CrystalAura, Teams, Reach,
+  AutoClicker, AttackDelay, AutoHead, Block, Piercing.
+- Movement: Speed, Flight, NoSlow, Inventory Move, FastWeb, TargetStrafe,
+  Phase, LongJump, FastStop, Strafe, Physics, Spider, Clipper, SafeWalk, Stuck.
+- Utility: AutoBucket, ChestStealer, InventoryManager, AutoArmor, Disabler,
+  AntiTNT, AntiVoid, AntiBots, AntiStaff, FastUse, FastPlace, AutoTool,
+  AutoChest, AutoHypixel, Blink, KillSay, NoRotate, Spammer, PartySpam.
+- World: Scaffold, Breaker, Timer, FastBreak.
+- Visual: ClickGUI, Overlay, ESP, Chams, Animations, FullBright, NoFOV,
+  Dynamic Island/overlay features, StreamerMode, Cape, Ambience, AttackEffects.
 
-We will keep upgrading the client until we run away.
+## Repository Notes
 
-# Thanks for
-Anthropic (an evil company,may be...)
+The repository intentionally excludes local research, decompiled output,
+Gradle caches, build outputs, local tools, and run directories. These are
+covered by `.gitignore`.
 
-OpenAI (a stupid company,they can't even handle a simple quota issue)
+## License
 
-OpenUitems (help us fix our killaura)
-
-Margele (NOOOO im not a Malaysian)
-
-Heypixel (Zhang Mengyuan do you know i love u?)
-
-may be more...
-
-# Co-Work
-You can write an "Issues" if u have any suggestions or doubts
-
-if you can write codes,u can pull a request.
+OpenOpal is licensed under the GNU General Public License v3.0. See
+[LICENSE](LICENSE) for details.

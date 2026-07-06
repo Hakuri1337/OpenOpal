@@ -67,6 +67,7 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
     private Method optionsMainHandGet = null;
     private Method optionsMainHandSet = null;
     private static volatile Class<?> OPTION_INSTANCE_CLASS = null;
+    private int prepareTicks = 0;
 
     public NoC0FNoSlow(final NoSlowModule module) {
         super(module);
@@ -120,6 +121,22 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
         }
 
         return false;
+    }
+
+    private boolean canStartNoC0F() {
+        if (mc.player == null || mc.options == null) {
+            return false;
+        }
+        if (isBlocked()) {
+            return false;
+        }
+        if (mc.player.hurtTime > 0) {
+            return false;
+        }
+        if (mc.currentScreen != null) {
+            return false;
+        }
+        return mc.player.currentScreenHandler == mc.player.playerScreenHandler;
     }
 
     private boolean isSingleUseConsumable(ItemStack stack) {
@@ -449,6 +466,7 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
         this.startUseSet = false;
         this.startUseStack = ItemStack.EMPTY;
         this.startUseCount = 0;
+        this.prepareTicks = 0;
     }
 
     private void abort(boolean revertSwap) {
@@ -483,20 +501,20 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
 
         if (this.step != Step.NONE && (isVelocityDelaying() || isVelocityQueueing())) {
             this.lockUseUntilRelease = false;
-            abort(this.step != Step.USING);
+            abort(false);
             return;
         }
 
         if (isBlocked()) {
             if (this.step != Step.NONE) {
-                abort(true);
+                abort(false);
             }
             return;
         }
 
         if (this.step != Step.NONE && mc.player.hurtTime > 0) {
             this.lockUseUntilRelease = false;
-            abort(this.step != Step.USING);
+            abort(false);
             return;
         }
 
@@ -511,20 +529,27 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
         boolean usingSlowingItem = isUsingSlowingItem();
         if (usingSlowingItem) {
             if (this.step == Step.NONE) {
+                if (!canStartNoC0F()) {
+                    return;
+                }
                 Hand usedHand = mc.player.getActiveHand();
                 this.targetHand = usedHand == Hand.MAIN_HAND ? Hand.OFF_HAND : Hand.MAIN_HAND;
                 this.step = Step.CANCEL_PONG;
                 this.swapWaitTicks = 0;
+                this.prepareTicks = 0;
                 this.wantForceLeftMainHand = isSingleUseConsumable(mc.player.getActiveItem());
-                
-                // Screen closure logic from NoSlow.java
-                if (mc.player.currentScreenHandler != mc.player.playerScreenHandler) {
-                    sendPacketSilent(new CloseHandledScreenC2SPacket(mc.player.currentScreenHandler.syncId));
-                }
             }
             if (mc.options != null && this.step != Step.USING) {
                 mc.options.useKey.setPressed(false);
                 this.forcedUseKeyDown = true;
+            }
+        }
+
+        if (this.step == Step.CANCEL_PONG) {
+            this.prepareTicks++;
+            if (this.prepareTicks >= 6) {
+                abort(false);
+                return;
             }
         }
 
@@ -537,7 +562,7 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
         if (this.step == Step.SWAP_HANDS) {
             this.swapWaitTicks++;
             if (this.swapWaitTicks >= 20) {
-                abort(true);
+                abort(false);
             }
             return;
         }
@@ -599,7 +624,7 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
 
         if (isBlocked()) {
             if (this.step != Step.NONE) {
-                abort(true);
+                abort(false);
             }
             return;
         }
@@ -645,7 +670,7 @@ public final class NoC0FNoSlow extends ModuleMode<NoSlowModule> {
         if (packet instanceof PlayerActionC2SPacket actionPacket
                 && actionPacket.getAction() == PlayerActionC2SPacket.Action.RELEASE_USE_ITEM
                 && this.step == Step.USING) {
-            abort(true);
+            abort(this.swapSent);
             return;
         }
     }

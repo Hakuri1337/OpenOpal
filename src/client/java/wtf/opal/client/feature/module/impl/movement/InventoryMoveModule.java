@@ -4,7 +4,8 @@ import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.option.KeyBinding;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
-import wtf.opal.client.feature.module.impl.movement.inventorymove.GrimInventoryMove;
+import wtf.opal.client.feature.module.impl.movement.inventorymove.HeypixelInventoryMove;
+import wtf.opal.client.feature.module.impl.movement.inventorymove.LegitInventoryMove;
 import wtf.opal.client.feature.module.impl.movement.inventorymove.NormalInventoryMove;
 import wtf.opal.client.feature.module.property.impl.mode.ModeProperty;
 import wtf.opal.client.screen.click.dropdown.DropdownClickGUI;
@@ -20,7 +21,7 @@ public final class InventoryMoveModule extends Module {
     public InventoryMoveModule() {
         super("Inventory Move", "Allows you to move while in inventories.", ModuleCategory.MOVEMENT);
         addProperties(mode);
-        addModuleModes(mode, new NormalInventoryMove(this), new GrimInventoryMove(this));
+        addModuleModes(mode, new NormalInventoryMove(this), new HeypixelInventoryMove(this), new LegitInventoryMove(this));
     }
 
     @Override
@@ -45,6 +46,13 @@ public final class InventoryMoveModule extends Module {
         event.setJump(isMovementKeyPressed(mc.options.jumpKey));
     }
 
+    public void stopMovementInput(final MoveInputEvent event) {
+        event.setForward(0.0F);
+        event.setSideways(0.0F);
+        event.setJump(false);
+        event.setSneak(false);
+    }
+
     private float getMovementSpeed(final boolean positive, final boolean negative) {
         if (positive == negative) {
             return 0.0F;
@@ -58,7 +66,8 @@ public final class InventoryMoveModule extends Module {
 
     public enum Mode {
         NORMAL("Normal"),
-        GRIM("Grim");
+        HEYPIXEL("Heypixel"),
+        LEGIT("Legit");
 
         private final String name;
 

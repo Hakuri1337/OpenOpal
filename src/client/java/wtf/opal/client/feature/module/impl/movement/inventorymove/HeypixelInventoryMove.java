@@ -11,27 +11,27 @@ import wtf.opal.event.subscriber.Subscribe;
 
 import static wtf.opal.client.Constants.mc;
 
-public final class GrimInventoryMove extends ModuleMode<InventoryMoveModule> {
+public final class HeypixelInventoryMove extends ModuleMode<InventoryMoveModule> {
 
-    public GrimInventoryMove(final InventoryMoveModule module) {
+    public HeypixelInventoryMove(final InventoryMoveModule module) {
         super(module);
     }
 
     @Override
     public Enum<?> getEnumValue() {
-        return InventoryMoveModule.Mode.GRIM;
+        return InventoryMoveModule.Mode.HEYPIXEL;
     }
 
     @Subscribe
     public void onMoveInput(final MoveInputEvent event) {
-        if (!module.canProcessScreenInput() || !isGrimMovementContext()) {
+        if (!module.canProcessScreenInput() || !this.isHeypixelMovementContext()) {
             return;
         }
 
         module.applyMovementInput(event);
     }
 
-    private boolean isGrimMovementContext() {
+    private boolean isHeypixelMovementContext() {
         if (mc.currentScreen instanceof DropdownClickGUI) {
             return true;
         }

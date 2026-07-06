@@ -38,8 +38,6 @@ public abstract class HandledScreenMixin<T extends ScreenHandler> {
         if (!(this.handler instanceof GenericContainerScreenHandler containerHandler)) return;
         if (mc.player.getInventory() == null || slot.inventory == mc.player.getInventory()) return;
 
-        if (!container.getTitle().getString().toLowerCase().contains("chest")) return;
-
         final ItemStack stack = slot.getStack();
 
         final Inventory chestInventory = containerHandler.getInventory();

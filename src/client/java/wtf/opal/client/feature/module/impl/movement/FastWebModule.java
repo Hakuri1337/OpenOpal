@@ -17,19 +17,29 @@ public final class FastWebModule extends Module {
     private int webCount;
 
     public FastWebModule() {
-        super("FastWeb", "Reduces cobweb slowdown using the OpenZen logic.", ModuleCategory.MOVEMENT);
+        super("FastWeb", "Reduces cobweb slowdown using the OpenZen FastWeb flow.", ModuleCategory.MOVEMENT);
     }
 
     @Override
     protected void onEnable() {
-        this.lastWebTick = 0;
-        this.webCount = 0;
+        this.resetWebState();
         super.onEnable();
+    }
+
+    @Override
+    protected void onDisable() {
+        this.resetWebState();
+        super.onDisable();
     }
 
     @Subscribe
     public void onPreGameTick(final PreGameTickEvent event) {
-        if (mc.player != null && this.lastWebTick < mc.player.age) {
+        if (mc.player == null) {
+            this.resetWebState();
+            return;
+        }
+
+        if (this.lastWebTick < mc.player.age) {
             this.webCount = 0;
         }
     }
@@ -53,5 +63,10 @@ public final class FastWebModule extends Module {
         if (this.webCount > 5) {
             event.setMotion(new Vec3d(0.88D, 1.88D, 0.88D));
         }
+    }
+
+    private void resetWebState() {
+        this.lastWebTick = 0;
+        this.webCount = 0;
     }
 }

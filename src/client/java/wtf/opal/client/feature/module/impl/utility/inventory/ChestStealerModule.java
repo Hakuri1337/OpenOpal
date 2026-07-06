@@ -60,6 +60,7 @@ ChestStealerModule extends Module {
     private boolean ghostWaitingRelease;
     private boolean ghostHadScreen;
     private int ghostSessionTimeout;
+    private int lastContainerSyncId = -1;
 
     public ChestStealerModule() {
         super("Chest Stealer", "Steals only useful or upgraded items from chests.", ModuleCategory.UTILITY);
@@ -110,13 +111,20 @@ ChestStealerModule extends Module {
     public void onPreGameTickEvent(final PreGameTickEvent event) {
         this.updateGhostHandSession();
 
-        if (!(mc.currentScreen instanceof GenericContainerScreen container)) return;
+        if (!(mc.currentScreen instanceof GenericContainerScreen container)) {
+            this.lastContainerSyncId = -1;
+            return;
+        }
 
         final GenericContainerScreenHandler screenHandler = container.getScreenHandler();
         final Inventory chestInventory = screenHandler.getInventory();
 
-        if (!container.getTitle().getString().toLowerCase().contains("chest")) return;
-        if (chestInventory.isEmpty() || InventoryUtility.isInventoryFull()) {
+        if (this.lastContainerSyncId != screenHandler.syncId) {
+            this.lastContainerSyncId = screenHandler.syncId;
+            this.stopwatch.setTime(System.currentTimeMillis() - InventoryUtility.withAcaQuickMoveDelay(delay.getMidpoint().longValue()));
+        }
+
+        if (chestInventory.isEmpty() || !this.canStoreAnyChestItem(chestInventory)) {
             closeContainerWhenSafe(container);
             return;
         }
@@ -192,21 +200,21 @@ ChestStealerModule extends Module {
 
         if (stack.isIn(ItemTags.SWORDS)) {
             final double value = InventoryUtility.getSwordValue(stack);
-            final double current = InventoryUtility.getSwordValue(getBestHotbarSword());
+            final double current = InventoryUtility.getSwordValue(getBestInventorySword());
 
             return stack == bestChestSword && value > current;
         }
 
         if (stack.isIn(ItemTags.PICKAXES)) {
             final double value = InventoryUtility.getToolValue(stack);
-            final double current = InventoryUtility.getToolValue(getBestHotbarTool(ItemTags.PICKAXES));
+            final double current = InventoryUtility.getToolValue(getBestInventoryTool(ItemTags.PICKAXES));
 
             return stack == bestChestPickaxe && value > current;
         }
 
         if (stack.isIn(ItemTags.AXES)) {
             final double value = InventoryUtility.getToolValue(stack);
-            final double current = InventoryUtility.getToolValue(getBestHotbarAxe());
+            final double current = InventoryUtility.getToolValue(getBestInventoryAxe());
 
             return stack == bestChestAxe && value > current;
         }
@@ -263,24 +271,24 @@ ChestStealerModule extends Module {
                 .orElse(ItemStack.EMPTY);
     }
 
-    private ItemStack getBestHotbarSword() {
-        return IntStream.range(0, 9)
+    private ItemStack getBestInventorySword() {
+        return IntStream.range(0, InventoryUtility.MAIN_INVENTORY_SIZE)
                 .mapToObj(i -> mc.player.getInventory().getStack(i))
                 .filter(stack -> stack.isIn(ItemTags.SWORDS))
                 .max(Comparator.comparingDouble(InventoryUtility::getSwordValue))
                 .orElse(ItemStack.EMPTY);
     }
 
-    private ItemStack getBestHotbarTool(TagKey<Item> tag) {
-        return IntStream.range(0, 9)
+    private ItemStack getBestInventoryTool(TagKey<Item> tag) {
+        return IntStream.range(0, InventoryUtility.MAIN_INVENTORY_SIZE)
                 .mapToObj(i -> mc.player.getInventory().getStack(i))
                 .filter(stack -> stack.isIn(tag))
                 .max(Comparator.comparingDouble(InventoryUtility::getToolValue))
                 .orElse(ItemStack.EMPTY);
     }
 
-    private ItemStack getBestHotbarAxe() {
-        return IntStream.range(0, 9)
+    private ItemStack getBestInventoryAxe() {
+        return IntStream.range(0, InventoryUtility.MAIN_INVENTORY_SIZE)
                 .mapToObj(i -> mc.player.getInventory().getStack(i))
                 .filter(stack -> stack.getItem() instanceof AxeItem)
                 .max(Comparator.comparingDouble(InventoryUtility::getToolValue))
@@ -290,6 +298,33 @@ ChestStealerModule extends Module {
     public boolean canMove() {
         final long delayMs = InventoryUtility.withAcaQuickMoveDelay(delay.getRandomValue().longValue());
         return delayMs == 0 || stopwatch.hasTimeElapsed(delayMs);
+    }
+
+    private boolean canStoreAnyChestItem(final Inventory chestInventory) {
+        if (mc.player == null) {
+            return false;
+        }
+
+        if (!InventoryUtility.isInventoryFull()) {
+            return true;
+        }
+
+        for (int chestSlot = 0; chestSlot < chestInventory.size(); chestSlot++) {
+            final ItemStack chestStack = chestInventory.getStack(chestSlot);
+            if (chestStack.isEmpty()) {
+                continue;
+            }
+
+            for (int playerSlot = 0; playerSlot < InventoryUtility.MAIN_INVENTORY_SIZE; playerSlot++) {
+                final ItemStack playerStack = mc.player.getInventory().getStack(playerSlot);
+                if (ItemStack.areItemsAndComponentsEqual(playerStack, chestStack)
+                        && playerStack.getCount() < Math.min(playerStack.getMaxCount(), mc.player.getInventory().getMaxCount(playerStack))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void closeContainerWhenSafe(final GenericContainerScreen container) {
