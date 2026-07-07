@@ -61,6 +61,18 @@ public final class BlockHolder {
         this.block();
     }
 
+    public void tickBlockedPackets() {
+        if (this.networkBlock != null) {
+            this.networkBlockage.tickBlockedPackets(this.networkBlock);
+        }
+    }
+
+    public void releasePacketsOlderThan(int maxAgeTicks) {
+        if (this.networkBlock != null) {
+            this.networkBlockage.releasePacketsOlderThan(this.networkBlock, maxAgeTicks, this.networkBlock.getPacketTransformer());
+        }
+    }
+
     public boolean isBlocking() {
         return this.networkBlock != null;
     }

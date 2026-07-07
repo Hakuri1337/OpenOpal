@@ -38,4 +38,7 @@ public abstract class VelocityMode extends ModuleMode<VelocityModule> {
     public boolean consumeHitSelectSkip() {
         return false;
     }
+
+    public void onVelocityResetAttackPerformed() {
+    }
 }

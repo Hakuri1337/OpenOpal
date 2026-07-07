@@ -4,6 +4,7 @@ import net.minecraft.network.ClientConnection;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
 import wtf.opal.client.feature.helper.impl.player.packet.blockage.DirectionalNetworkBlockage;
+import wtf.opal.duck.ClientConnectionAccess;
 
 import static wtf.opal.client.Constants.mc;
 
@@ -27,6 +28,6 @@ public final class OutboundNetworkBlockage extends DirectionalNetworkBlockage<Se
 
     @Override
     protected void flushPacket(ClientConnection connection, Packet<?> packet) {
-        connection.send(packet, null);
+        ((ClientConnectionAccess) connection).opal$sendPacketSilent(packet);
     }
 }

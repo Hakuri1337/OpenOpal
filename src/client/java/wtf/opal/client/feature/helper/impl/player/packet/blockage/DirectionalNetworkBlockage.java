@@ -86,35 +86,60 @@ public abstract class DirectionalNetworkBlockage<T extends PacketListener> {
         }
     }
 
+    public void tickBlockedPackets(NetworkBlock networkBlock) {
+        synchronized (this.lock) {
+            for (BlockedPacket blockedPacket : this.packetList) {
+                if (blockedPacket.getBlockageId() == networkBlock.getId()) {
+                    blockedPacket.tickAge();
+                }
+            }
+        }
+    }
+
+    public void releasePacketsOlderThan(NetworkBlock networkBlock, int maxAgeTicks, @Nullable PacketTransformer packetTransformer) {
+        ClientPlayNetworkHandler networkHandler = mc.getNetworkHandler();
+        ClientConnection connection = networkHandler == null ? null : networkHandler.getConnection();
+        List<Packet<?>> packetsToFlush = new ArrayList<>();
+        synchronized (this.lock) {
+            for (Iterator<BlockedPacket> iterator = this.packetList.iterator(); iterator.hasNext(); ) {
+                BlockedPacket blockedPacket = iterator.next();
+                if (blockedPacket.getBlockageId() != networkBlock.getId() || blockedPacket.getAgeTicks() < maxAgeTicks) {
+                    continue;
+                }
+
+                if (connection != null) {
+                    Packet<?> packet = blockedPacket.getPacket();
+                    if (packetTransformer != null) {
+                        packet = packetTransformer.transform(packet);
+                    }
+                    if (packet != null) {
+                        packetsToFlush.add(packet);
+                    }
+                }
+                iterator.remove();
+            }
+        }
+        for (Packet<?> packet : packetsToFlush) {
+            this.flushPacket(connection, packet);
+        }
+    }
+
     protected abstract void flushPacket(ClientConnection connection, Packet<?> packet);
 
     public boolean isBlocked(Packet<?> packet) {
         synchronized (this.lock) {
             if (!this.blockageList.isEmpty()) {
                 this.sort();
-                final NetworkBlock blockage = this.blockageList.getFirst();
-                final PacketValidator packetValidator = blockage.getPacketValidator();
-                boolean valid = false;
-                if (packetValidator == null) {
-                    valid = true;
-                } else {
-                    if (packetValidator.isValid(packet)) {
-                        valid = true;
-                    } else {
-                        for (final NetworkBlock block : this.blockageList) {
-                            if (block.equals(blockage)) {
-                                continue;
-                            }
-                            final PacketValidator blockValidator = block.getPacketValidator();
-                            if (blockValidator == null || blockValidator.isValid(packet)) {
-                                valid = true;
-                                break;
-                            }
-                        }
+                NetworkBlock validBlock = null;
+                for (final NetworkBlock block : this.blockageList) {
+                    final PacketValidator blockValidator = block.getPacketValidator();
+                    if (blockValidator == null || blockValidator.isValid(packet)) {
+                        validBlock = block;
+                        break;
                     }
                 }
-                if (valid) {
-                    this.packetList.add(new BlockedPacket(packet, this.id));
+                if (validBlock != null) {
+                    this.packetList.add(new BlockedPacket(packet, this.id, validBlock.getId()));
                     this.id++;
                     return true;
                 }

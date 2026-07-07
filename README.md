@@ -65,6 +65,15 @@ OpenOpal currently registers modules across these categories:
 - World: Scaffold, Breaker, Timer, FastBreak.
 - Visual: ClickGUI, Overlay, ESP, Chams, Animations, FullBright, NoFOV,
   Dynamic Island/overlay features, StreamerMode, Cape, Ambience, AttackEffects.
+  Anthropic (an evil company,may be...)
+
+## Thanks for
+
+- OpenAI (a stupid company,they can't even handle a simple quota issue)
+- OpenUitems (help us fix our killaura)
+- Margele (NOOOO im not a Malaysian)
+- Heypixel (Zhang Mengyuan do you know i love u?)
+- may be more...
 
 ## Repository Notes
 
@@ -76,3 +85,6 @@ covered by `.gitignore`.
 
 OpenOpal is licensed under the GNU General Public License v3.0. See
 [LICENSE](LICENSE) for details.
+
+## More
+If You want to get a business license, which is used to sell your openopal-base client, please submit a “Issues”

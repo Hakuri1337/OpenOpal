@@ -5,6 +5,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
 import net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket;
@@ -14,6 +15,7 @@ import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
 import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerRespawnS2CPacket;
+import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.Vec2f;
@@ -69,6 +71,8 @@ public final class DelayVelocity extends VelocityMode {
     private boolean velocityApplied;
     private final Queue<Packet<?>> packets = new ConcurrentLinkedQueue<>();
     private int hitSelectSkipAttacks;
+    private int pendingKillAuraReductions;
+    private int pendingKillAuraWindowTicks;
 
     public DelayVelocity(final VelocityModule module) {
         super(module);
@@ -163,7 +167,7 @@ public final class DelayVelocity extends VelocityMode {
             return false;
         }
 
-        return killAura.requestVelocityResetAttack(count, Math.max(4, count * 3), mc.player.isSprinting(), null);
+        return killAura.requestVelocityResetAttack(count, Math.max(4, count * 3), mc.player.isSprinting(), 0.6D);
     }
 
     private void handle() {
@@ -213,6 +217,32 @@ public final class DelayVelocity extends VelocityMode {
         }
     }
 
+    private boolean isHoldingAttackReduceItem() {
+        if (mc.player == null) {
+            return false;
+        }
+
+        final ItemStack stack = mc.player.getMainHandStack();
+        return !stack.isEmpty()
+                && (stack.isIn(ItemTags.SWORDS) || stack.isIn(ItemTags.AXES) || stack.isIn(ItemTags.PICKAXES));
+    }
+
+    private void reduceHorizontalVelocityAfterAttack(final String source) {
+        if (mc.player == null) {
+            return;
+        }
+
+        final Vec3d before = mc.player.getVelocity();
+        final double beforeHorizontal = Math.sqrt(before.x * before.x + before.z * before.z);
+        mc.player.setVelocity(before.multiply(0.6D, 1.0D, 0.6D));
+        final Vec3d after = mc.player.getVelocity();
+        final double afterHorizontal = Math.sqrt(after.x * after.x + after.z * after.z);
+        this.debugLog(source + " reduce hSpeed="
+                + String.format(java.util.Locale.ROOT, "%.3f", beforeHorizontal)
+                + " -> "
+                + String.format(java.util.Locale.ROOT, "%.3f", afterHorizontal));
+    }
+
     private void clearAttackState() {
         this.target = null;
         this.attackQueue = 0;
@@ -220,6 +250,8 @@ public final class DelayVelocity extends VelocityMode {
         this.velocity = null;
         this.velocityApplied = false;
         this.attacking = false;
+        this.pendingKillAuraReductions = 0;
+        this.pendingKillAuraWindowTicks = 0;
     }
 
     private String targetName(final Entity entity) {
@@ -377,14 +409,24 @@ public final class DelayVelocity extends VelocityMode {
                 return;
             }
 
+            if (!this.isHoldingAttackReduceItem()) {
+                this.debugLog("cancel queue: invalid held item");
+                this.clearAttackState();
+                return;
+            }
+
             if (this.killAuraAttack.getValue()) {
                 final int requested = this.attackQueue;
                 if (this.requestKillAuraAttacks(requested)) {
                     this.debugLog("request KillAura attacks=" + requested + ", target=" + this.targetName(this.target));
+                    this.pendingKillAuraReductions = requested;
+                    this.pendingKillAuraWindowTicks = Math.max(4, requested * 3);
+                    this.attackQueue = 0;
+                    this.hitSelectSkipAttacks = 0;
                 } else {
                     this.debugLog("cancel queue: KillAura request failed, target=" + this.targetName(this.target));
+                    this.clearAttackState();
                 }
-                this.clearAttackState();
                 return;
             }
 
@@ -404,12 +446,18 @@ public final class DelayVelocity extends VelocityMode {
             mc.player.setSprinting(true);
             mc.interactionManager.attackEntity(mc.player, this.target);
             mc.player.swingHand(Hand.MAIN_HAND);
+            this.reduceHorizontalVelocityAfterAttack("direct attack");
             this.debugLog("direct attack: target=" + this.targetName(this.target) + ", remaining=" + (this.attackQueue - 1));
             this.attackQueue--;
 
             if (this.attackQueue <= 0) {
                 this.clearAttackState();
             }
+        }
+
+        if (this.pendingKillAuraReductions > 0 && this.pendingKillAuraWindowTicks > 0 && --this.pendingKillAuraWindowTicks == 0) {
+            this.debugLog("cancel KillAura reductions: attack window expired, remaining=" + this.pendingKillAuraReductions);
+            this.clearAttackState();
         }
     }
 
@@ -478,6 +526,8 @@ public final class DelayVelocity extends VelocityMode {
         this.velocityApplied = false;
         this.packets.clear();
         this.hitSelectSkipAttacks = 0;
+        this.pendingKillAuraReductions = 0;
+        this.pendingKillAuraWindowTicks = 0;
     }
 
     @Override
@@ -500,6 +550,20 @@ public final class DelayVelocity extends VelocityMode {
     }
 
     @Override
+    public void onVelocityResetAttackPerformed() {
+        if (this.pendingKillAuraReductions <= 0) {
+            return;
+        }
+
+        this.reduceHorizontalVelocityAfterAttack("KillAura attack");
+        this.pendingKillAuraReductions--;
+        this.pendingKillAuraWindowTicks = Math.max(this.pendingKillAuraWindowTicks, 1);
+        if (this.pendingKillAuraReductions <= 0) {
+            this.clearAttackState();
+        }
+    }
+
+    @Override
     public boolean isDelaying() {
         return this.alinkTicks >= 0;
     }
@@ -511,7 +575,7 @@ public final class DelayVelocity extends VelocityMode {
 
     @Override
     public boolean shouldStopBacktrack() {
-        return this.isDelaying() || this.hasQueuedPackets() || this.attackQueue > 0 || this.attacking;
+        return this.isDelaying() || this.hasQueuedPackets() || this.attackQueue > 0 || this.attacking || this.pendingKillAuraReductions > 0;
     }
 
     @Override

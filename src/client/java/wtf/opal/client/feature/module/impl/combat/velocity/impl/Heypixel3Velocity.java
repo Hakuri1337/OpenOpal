@@ -19,7 +19,7 @@ import static wtf.opal.client.Constants.mc;
 
 public final class Heypixel3Velocity extends VelocityMode {
 
-    private final NumberProperty maxDelayTicks = new NumberProperty("Delay SPacket Ticks", 5, 1, 5, 1)
+    private final NumberProperty maxDelayTicks = new NumberProperty("Delay SPacket Ticks", 5, 1, 60, 1)
             .hideIf(() -> this.module.getActiveMode() != this);
 
     private final Queue<Packet<?>> delayedPackets = new ArrayDeque<>();

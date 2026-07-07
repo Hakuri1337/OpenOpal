@@ -90,6 +90,7 @@ public final class KillAuraModule extends Module {
 
         this.velocityResetAttacks = Math.max(this.velocityResetAttacks, Math.max(1, clicks));
         this.velocityResetWindowTicks = Math.max(1, windowTicks);
+        this.velocityResetSprintSlowdown = sprintSlowdown;
         return true;
     }
 
@@ -150,14 +151,18 @@ public final class KillAuraModule extends Module {
 
                     MouseHelper.getLeftButton().setPressed();
                     target.getKillAuraTarget().onAttack(this.attacks == 0);
-                    if (this.velocityResetAttacks > 0) {
+                    final boolean velocityResetAttack = this.velocityResetAttacks > 0;
+                    if (velocityResetAttack) {
                         this.velocityResetAttacks--;
+                        if (velocityModule != null && velocityModule.isEnabled() && velocityModule.getActiveMode() instanceof VelocityMode velocityMode) {
+                            velocityMode.onVelocityResetAttackPerformed();
+                        }
                         if (this.velocityResetAttacks == 0) {
-                            this.velocityResetWindowTicks = 0;
+                            this.clearVelocityResetAttack();
                         }
                     }
 
-                    if (this.settings.isGrimKeepSprint() && mc.player.isSprinting()) {
+                    if (this.settings.isGrimKeepSprint() && mc.player.isSprinting() && !(velocityResetAttack && this.velocityResetSprintSlowdown != null)) {
                         grimAttackKeepTicks = 2;
                         final Vec3d velocity = mc.player.getVelocity();
                         mc.player.setVelocity(velocity.x * 0.6D, velocity.y, velocity.z * 0.6D);
@@ -240,6 +245,7 @@ public final class KillAuraModule extends Module {
     private int grimDamageWindowTicks;
     private int velocityResetAttacks;
     private int velocityResetWindowTicks;
+    private Double velocityResetSprintSlowdown;
     private BufferAllocator worldAllocator;
 
     @Subscribe
@@ -480,6 +486,7 @@ public final class KillAuraModule extends Module {
     private void clearVelocityResetAttack() {
         this.velocityResetAttacks = 0;
         this.velocityResetWindowTicks = 0;
+        this.velocityResetSprintSlowdown = null;
     }
 
     private final java.util.ArrayDeque<Double> haloTrailHeights = new java.util.ArrayDeque<>();

@@ -84,7 +84,7 @@ public abstract class ClientConnectionMixin implements ClientConnectionAccess {
     private void hookSendPacket(Packet<?> packet, @Nullable ChannelFutureListener channelFutureListener, CallbackInfo ci) {
         final SendPacketEvent event = new SendPacketEvent(packet);
         EventDispatcher.dispatch(event);
-        if (event.isCancelled()) {
+        if (event.isCancelled() || OutboundNetworkBlockage.get().isBlocked(packet)) {
             ci.cancel();
         }
     }
