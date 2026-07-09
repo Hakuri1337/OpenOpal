@@ -69,10 +69,12 @@ OpenOpal currently registers modules across these categories:
 
 ## Thanks for
 
-- OpenAI (a stupid company,they can't even handle a simple quota issue)
-- OpenUitems (help us fix our killaura)
-- Margele (NOOOO im not a Malaysian)
-- Heypixel (Zhang Mengyuan do you know i love u?)
+- OpenAI's GPT5.5 xhigh (a stupid company,they can't even handle a simple quota issue)
+- yufeiovo's OpenUitems (help us fix our killaura)
+- Margele's OpenZen and Naven (NOOOO im not a Malaysian)
+- Malkuth's SouthsideNextgen (SSNG's Scaffold is perfect)
+- CCBlueX's Liquidbounce (it seems that everyone who hacks in Minecraft should thank them)
+- DemonCat's trashy Heypixel server (Zhang Mengyuan and Liu Xinlan do you know i love u?)
 - may be more...
 
 ## Repository Notes
