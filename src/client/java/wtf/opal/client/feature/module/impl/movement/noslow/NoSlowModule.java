@@ -5,8 +5,8 @@ import net.minecraft.registry.tag.ItemTags;
 import wtf.opal.client.feature.helper.impl.player.slot.SlotHelper;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
+import wtf.opal.client.feature.module.impl.movement.noslow.impl.GrimFastNoSlow;
 import wtf.opal.client.feature.module.impl.movement.noslow.impl.GrimJumpNoSlow;
-import wtf.opal.client.feature.module.impl.movement.noslow.impl.NoC0FNoSlow;
 import wtf.opal.client.feature.module.impl.movement.noslow.impl.UniversalNoSlow;
 import wtf.opal.client.feature.module.impl.movement.noslow.impl.VanillaNoSlow;
 import wtf.opal.client.feature.module.impl.movement.noslow.impl.WatchdogNoSlow;
@@ -26,7 +26,7 @@ public final class NoSlowModule extends Module {
 
     public NoSlowModule() {
         super("No Slow", "Removes vanilla slowdowns such as item usage.", ModuleCategory.MOVEMENT);
-        addModuleModes(mode, new VanillaNoSlow(this), new WatchdogNoSlow(this), new UniversalNoSlow(this), new GrimJumpNoSlow(this), new NoC0FNoSlow(this));
+        addModuleModes(mode, new VanillaNoSlow(this), new WatchdogNoSlow(this), new UniversalNoSlow(this), new GrimJumpNoSlow(this), new GrimFastNoSlow(this));
         addProperties(mode, allowSprinting);
     }
 
@@ -71,7 +71,7 @@ public final class NoSlowModule extends Module {
         WATCHDOG("Watchdog"),
         UNIVERSAL("Universal"),
         GRIM_JUMP("GrimJump"),
-        NOC0F("NoC0F");
+        GRIM_FAST("GrimFast");
 
         private final String name;
 
@@ -104,17 +104,18 @@ public final class NoSlowModule extends Module {
         final String normalizedValue = normalize(valueString);
         if (normalizedValue.equals("grim")
                 || normalizedValue.equals("grimv3")
+                || normalizedValue.equals("grimfast")
                 || normalizedValue.equals("noslow")
                 || normalizedValue.equals("zen")
-                || normalizedValue.equals("grimjump")
-                || normalizedValue.equals("你知不知道全世界都打不过Zen。")
-                || normalizedValue.equals("cn.pornhub.com is the best website in the world")) {
-            this.mode.setValueOrdinal(Mode.GRIM_JUMP.ordinal());
+                || normalizedValue.equals("grimc0f")
+                || normalizedValue.equals("noc0f")
+                || normalizedValue.equals("heypixel")) {
+            this.mode.setValueOrdinal(Mode.GRIM_FAST.ordinal());
             return true;
         }
 
-        if (normalizedValue.equals("grimc0f") || normalizedValue.equals("noc0f") || normalizedValue.equals("heypixel")) {
-            this.mode.setValueOrdinal(Mode.NOC0F.ordinal());
+        if (normalizedValue.equals("grimjump")) {
+            this.mode.setValueOrdinal(Mode.GRIM_JUMP.ordinal());
             return true;
         }
 

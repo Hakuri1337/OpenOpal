@@ -1,5 +1,6 @@
 package wtf.opal.client.feature.module.impl.visual;
 
+import net.minecraft.util.AssetInfo;
 import net.minecraft.util.Identifier;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
@@ -47,11 +48,13 @@ public final class CapeModule extends Module {
 
         private final String name, slug;
         private final Identifier identifier;
+        private final AssetInfo.TextureAsset textureAsset;
 
         CapeType(final String name) {
             this.name = name;
-            this.slug = name.replace(' ', '-').toLowerCase();
+            this.slug = name.replace(' ', '_').toLowerCase();
             this.identifier = Identifier.of("opal", "capes/" + this.slug + ".png");
+            this.textureAsset = new AssetInfo.TextureAssetInfo(this.identifier);
         }
 
         public String getSlug() {
@@ -60,6 +63,10 @@ public final class CapeModule extends Module {
 
         public Identifier getIdentifier() {
             return identifier;
+        }
+
+        public AssetInfo.TextureAsset getTextureAsset() {
+            return textureAsset;
         }
 
         @Override
