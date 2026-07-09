@@ -1,8 +1,8 @@
 {
 	"schemaVersion": 1,
 	"id": "opal",
-	"version": "2.0.0",
-	"name": "Opal v2",
+	"version": "stable-b2",
+	"name": "OpenOpal",
 	"description": "we are charlie kirk!!!!!!",
 	"authors": [
 		"tear",

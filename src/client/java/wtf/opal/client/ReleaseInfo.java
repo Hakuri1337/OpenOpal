@@ -2,11 +2,12 @@ package wtf.opal.client;
 
 public final class ReleaseInfo {
 
-    public static final ReleaseChannel CHANNEL = ReleaseChannel.DEVELOPMENT;
-    public static final String VERSION = "0.1-beta.1";
-    public static final String NAME = "Opal";
+    public static final ReleaseChannel CHANNEL = ReleaseChannel.STABLE;
+    public static final String VERSION = "b2";
+    public static final String NAME = "OpenOpal";
 
     public enum ReleaseChannel {
+        STABLE("stable"),
         PUBLIC("public"),
         BETA("beta"),
         DEVELOPMENT("development");

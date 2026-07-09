@@ -3,7 +3,8 @@ package wtf.opal.client.feature.module.impl.combat.velocity;
 import wtf.opal.client.OpalClient;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
-import wtf.opal.client.feature.module.impl.combat.velocity.impl.DelayVelocity;
+import wtf.opal.client.feature.module.impl.combat.velocity.impl.BufferJumpResetVelocity;
+import wtf.opal.client.feature.module.impl.combat.velocity.impl.CubeCraftVelocity;
 import wtf.opal.client.feature.module.impl.combat.velocity.impl.Heypixel3Velocity;
 import wtf.opal.client.feature.module.impl.combat.velocity.impl.JumpResetVelocity;
 import wtf.opal.client.feature.module.impl.combat.velocity.impl.NormalVelocity;
@@ -23,14 +24,17 @@ public final class VelocityModule extends Module {
         addModuleModes(mode,
                 new NormalVelocity(this),
                 new Heypixel3Velocity(this),
-                new DelayVelocity(this),
+                new BufferJumpResetVelocity(this),
+                new CubeCraftVelocity(this),
                 new JumpResetVelocity(this)
         );
     }
 
     @Override
     public String getSuffix() {
-        return ((VelocityMode) this.getActiveMode()).getSuffix();
+        return this.getActiveMode() instanceof VelocityMode velocityMode
+                ? velocityMode.getSuffix()
+                : this.mode.getValue().toString();
     }
 
     public boolean isInvalid() {
@@ -68,7 +72,9 @@ public final class VelocityModule extends Module {
     public enum Mode {
         NORMAL("Normal"),
         BUFFER("Buffer"),
-        ATTACK_REDUCE("AttackReduce"),
+        BUFFER_JUMP_RESET("BufferJumpReset"),
+        CUBECRAFT("CubeCraft"),
+        ATTACK_REDUCE("AttackReduce (Disabled)"),
         JUMP_RESET("JumpReset");
 
         private final String name;

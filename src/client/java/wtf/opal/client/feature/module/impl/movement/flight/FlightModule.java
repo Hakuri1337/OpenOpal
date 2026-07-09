@@ -13,7 +13,7 @@ public final class FlightModule extends Module {
         super("Flight", "You grow wings in real life.", ModuleCategory.MOVEMENT);
         addProperties(mode);
         addModuleModes(mode, new VanillaFlight(this), new FireballFlight(this), new AirWalkFlight(this),
-                new BloxdFlight(this));
+                new BloxdFlight(this), new CubeCraftAirWalkFlight(this), new CubeCraftPingSpoofFlight(this));
     }
 
     @Override
@@ -26,7 +26,9 @@ public final class FlightModule extends Module {
         FIREBALL("Fireball"),
         HYPIXEL("Hypixel"),
         AIR_WALK("Air Walk"),
-        BLOXD("Bloxd");
+        BLOXD("Bloxd"),
+        CUBECRAFT_AIR_WALK("CubeCraftAirWalk"),
+        CUBECRAFT_PING_SPOOF("CubeCraftPingSpoof");
 
         private final String name;
 

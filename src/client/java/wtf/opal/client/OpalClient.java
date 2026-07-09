@@ -88,6 +88,7 @@ public final class OpalClient {
                     new AttackDelayModule(),
                     new CriticalsModule(),
                     new VelocityModule(),
+                    new FakeLagModule(),
                     new AutoHeadModule(),
                     new CrystalAuraModule(),
                     // Visual
@@ -147,6 +148,7 @@ public final class OpalClient {
                     new AutoChestModule(),
                     new AutoHypixelModule(),
                     new BlinkModule(),
+                    new PingSpoofModule(),
                     new AntiBotsModule(),
                     new KillSayModule(),
                     new NoRotateModule(),
