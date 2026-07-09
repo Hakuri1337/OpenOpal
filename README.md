@@ -48,7 +48,7 @@ The in-game command system includes configuration commands through `.c`.
 Common commands include:
 
 - `.t <module>` toggles a module.
-- `.bind <module> <key>` binds a module.
+- `.bind modules <module> <key>` binds a module.
 - `.c` manages configs.
 
 ## Module Areas
