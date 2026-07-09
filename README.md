@@ -65,8 +65,6 @@ OpenOpal currently registers modules across these categories:
 - World: Scaffold, Breaker, Timer, FastBreak.
 - Visual: ClickGUI, Overlay, ESP, Chams, Animations, FullBright, NoFOV,
   Dynamic Island/overlay features, StreamerMode, Cape, Ambience, AttackEffects.
-  Anthropic (an evil company,may be...)
-
 ## Thanks for
 
 - OpenAI's GPT5.5 xhigh (a stupid company,they can't even handle a simple quota issue)
