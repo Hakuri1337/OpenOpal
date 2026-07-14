@@ -52,6 +52,11 @@ public final class ChatUtility {
     }
 
     public static void display(final Text text) {
+        if (!mc.isOnThread()) {
+            mc.execute(() -> display(text));
+            return;
+        }
+
         if (mc.player == null) {
             return;
         }

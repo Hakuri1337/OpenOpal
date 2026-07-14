@@ -35,8 +35,8 @@ public final class InventoryUtility {
     public static final int HOTBAR_SCREEN_OFFSET = 36;
     public static final int OFFHAND_SWAP_BUTTON = 40;
     public static final int OFFHAND_SCREEN_SLOT = 45;
-    public static final long ACA_MULTIINTERACTION_QUICK_MOVE_DELAY_MS = 135L;
-    public static final long ACA_MULTIINTERACTION_PICKUP_DELAY_MS = 285L;
+    public static final long ACA_MULTIINTERACTION_QUICK_MOVE_DELAY_MS = 225L;
+    public static final long ACA_MULTIINTERACTION_PICKUP_DELAY_MS = 375L;
     public static final long ACA_INVENTORY_CLOSE_DELAY_MS = 90L;
 
     private InventoryUtility() {
@@ -109,15 +109,33 @@ public final class InventoryUtility {
     }
 
     public static boolean isArmor(final ItemStack itemStack) {
+        return getArmorEquipmentSlot(itemStack) != null;
+    }
+
+    public static EquipmentSlot getArmorEquipmentSlot(final ItemStack itemStack) {
         if (itemStack == null || itemStack.isEmpty()) {
-            return false;
+            return null;
         }
 
         if (itemStack.getItem() == Items.PLAYER_HEAD || itemStack.getItem() == Items.PUMPKIN || itemStack.getItem() == Items.CARVED_PUMPKIN) {
-            return false;
+            return null;
         }
 
-        return itemStack.getComponents().get(DataComponentTypes.EQUIPPABLE) != null;
+        final EquippableComponent equippable = itemStack.get(DataComponentTypes.EQUIPPABLE);
+        if (equippable == null) {
+            return null;
+        }
+
+        final EquipmentSlot slot = equippable.slot();
+        if (slot != EquipmentSlot.HEAD
+                && slot != EquipmentSlot.CHEST
+                && slot != EquipmentSlot.LEGS
+                && slot != EquipmentSlot.FEET) {
+            return null;
+        }
+
+        // EQUIPPABLE also covers non-armor wearables in modern versions.
+        return PlayerUtility.getArmorProtection(itemStack) > 0.0 ? slot : null;
     }
 
     public static boolean isFoodItem(final ItemStack itemStack) {
@@ -589,8 +607,7 @@ public final class InventoryUtility {
                 return false;
             }
 
-            final EquippableComponent equippable = slot.getStack().getComponents().get(DataComponentTypes.EQUIPPABLE);
-            return equippable != null && equippable.slot() == equipmentSlot;
+            return getArmorEquipmentSlot(slot.getStack()) == equipmentSlot;
         }, false).stream().max(Comparator.comparingDouble(slot -> getArmorValue(slot.getStack()))).orElse(null);
     }
 

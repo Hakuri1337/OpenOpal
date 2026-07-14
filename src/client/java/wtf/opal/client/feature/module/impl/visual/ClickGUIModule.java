@@ -16,11 +16,12 @@ public final class ClickGUIModule extends Module {
 
     private final DropdownClickGUI dropdownClickGUI = new DropdownClickGUI();
     private final BooleanProperty allowDrag = new BooleanProperty("Allow Drag", false);
+    private final BooleanProperty enhancedMainMenu = new BooleanProperty("Enhanced Main Menu", true);
 
     public ClickGUIModule() {
         super("Click GUI", "A display for interacting with client features.", ModuleCategory.VISUAL);
         OpalClient.getInstance().getBindRepository().getBindingService().register(GLFW.GLFW_KEY_RIGHT_SHIFT, this, InputType.KEYBOARD);
-        this.addProperties(allowDrag);
+        this.addProperties(allowDrag, enhancedMainMenu);
     }
 
     @Override
@@ -44,6 +45,10 @@ public final class ClickGUIModule extends Module {
 
     public boolean isAllowDrag() {
         return allowDrag.getValue();
+    }
+
+    public boolean isEnhancedMainMenu() {
+        return enhancedMainMenu.getValue();
     }
 
 }

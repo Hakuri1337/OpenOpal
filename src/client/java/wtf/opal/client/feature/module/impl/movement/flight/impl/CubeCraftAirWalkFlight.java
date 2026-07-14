@@ -29,6 +29,12 @@ public final class CubeCraftAirWalkFlight extends ModuleMode<FlightModule> {
             return;
         }
 
+        if (MoveUtility.isMoving()) {
+            MoveUtility.setSpeed(MoveUtility.getSpeed());
+        } else {
+            MoveUtility.setSpeed(0.0D);
+        }
+
         if (this.ticks++ % 6 != 0) {
             return;
         }

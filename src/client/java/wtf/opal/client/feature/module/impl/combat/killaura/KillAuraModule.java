@@ -84,14 +84,7 @@ public final class KillAuraModule extends Module {
     }
 
     public boolean requestVelocityResetAttack(final int clicks, final int windowTicks, final boolean wasSprinting, final Double sprintSlowdown) {
-        if (!this.shouldRun() || this.targeting.getTarget() == null) {
-            return false;
-        }
-
-        this.velocityResetAttacks = Math.max(this.velocityResetAttacks, Math.max(1, clicks));
-        this.velocityResetWindowTicks = Math.max(1, windowTicks);
-        this.velocityResetSprintSlowdown = sprintSlowdown;
-        return true;
+        return false;
     }
 
     @Subscribe
@@ -129,7 +122,7 @@ public final class KillAuraModule extends Module {
 
         if (mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
             final VelocityModule velocityModule = OpalClient.getInstance().getModuleRepository().getModule(VelocityModule.class);
-            if (this.settings.isHitSelect() && this.velocityResetAttacks <= 0 && velocityModule != null && velocityModule.isEnabled()) {
+            if (this.settings.isHitSelect() && velocityModule != null && velocityModule.isEnabled()) {
                 if (velocityModule.getActiveMode() instanceof VelocityMode velocityMode) {
                     if (velocityMode.getHitSelectSkips() > 0) {
                         velocityMode.consumeHitSelectSkip();
@@ -151,18 +144,8 @@ public final class KillAuraModule extends Module {
 
                     MouseHelper.getLeftButton().setPressed();
                     target.getKillAuraTarget().onAttack(this.attacks == 0);
-                    final boolean velocityResetAttack = this.velocityResetAttacks > 0;
-                    if (velocityResetAttack) {
-                        this.velocityResetAttacks--;
-                        if (velocityModule != null && velocityModule.isEnabled() && velocityModule.getActiveMode() instanceof VelocityMode velocityMode) {
-                            velocityMode.onVelocityResetAttackPerformed();
-                        }
-                        if (this.velocityResetAttacks == 0) {
-                            this.clearVelocityResetAttack();
-                        }
-                    }
 
-                    if (this.settings.isGrimKeepSprint() && mc.player.isSprinting() && !(velocityResetAttack && this.velocityResetSprintSlowdown != null)) {
+                    if (this.settings.isGrimKeepSprint() && mc.player.isSprinting()) {
                         grimAttackKeepTicks = 2;
                         final Vec3d velocity = mc.player.getVelocity();
                         mc.player.setVelocity(velocity.x * 0.6D, velocity.y, velocity.z * 0.6D);
@@ -190,10 +173,6 @@ public final class KillAuraModule extends Module {
         final boolean smartWeaponAttack = getSmartWeaponSlot(target.getEntity()) != -1;
         if (this.settings.isAttackCooldown19() && mc.player != null && !smartWeaponAttack) {
             return mc.player.getAttackCooldownProgress(0.5F) >= 1.0F;
-        }
-
-        if (this.velocityResetAttacks > 0) {
-            return true;
         }
 
         if (settings.isHeypixelBypass()) {
@@ -243,9 +222,6 @@ public final class KillAuraModule extends Module {
     private int grimAttackKeepTicks;
     private int grimDamageKeepTicks;
     private int grimDamageWindowTicks;
-    private int velocityResetAttacks;
-    private int velocityResetWindowTicks;
-    private Double velocityResetSprintSlowdown;
     private BufferAllocator worldAllocator;
 
     @Subscribe
@@ -363,12 +339,7 @@ public final class KillAuraModule extends Module {
 
         if (!shouldRun()) {
             this.targeting.reset();
-            this.clearVelocityResetAttack();
             return;
-        }
-
-        if (this.velocityResetWindowTicks > 0 && --this.velocityResetWindowTicks == 0) {
-            this.clearVelocityResetAttack();
         }
 
         this.targeting.update();
@@ -411,7 +382,7 @@ public final class KillAuraModule extends Module {
         }
         final CurrentTarget target = this.targeting.getTarget();
         Predicate<Entity> entityPredicate = target == null ? Predicates.alwaysTrue() : e -> e == target.getEntity();
-        this.hitResult = RaycastUtility.raycastEntity(mc.player.getEntityInteractionRange(), 1.0F, mc.player.getYaw(), mc.player.getPitch(), entityPredicate);
+        this.hitResult = RaycastUtility.raycastEntity(this.settings.getRange(), 1.0F, mc.player.getYaw(), mc.player.getPitch(), entityPredicate);
     }
 
     private void updateAutoblock() {
@@ -425,7 +396,35 @@ public final class KillAuraModule extends Module {
             return;
         }
 
-        releaseAutoblock();
+        final KillAuraSettings.AutoblockMode autoblockMode = this.settings.getAutoblockMode();
+        if (autoblockMode == KillAuraSettings.AutoblockMode.OFF) {
+            releaseAutoblock();
+            return;
+        }
+
+        if (OpalClient.getInstance().getModuleRepository().getModule(ScaffoldModule.class).isEnabled()) {
+            releaseAutoblock();
+            return;
+        }
+
+        final CurrentTarget target = this.targeting.getTarget();
+        if (target == null) {
+            releaseAutoblock();
+            return;
+        }
+
+        if (autoblockMode == KillAuraSettings.AutoblockMode.FAKE) {
+            return;
+        }
+
+        if (!mc.player.getMainHandStack().isIn(ItemTags.SWORDS)) {
+            releaseAutoblock();
+            return;
+        }
+
+        final MouseButton rightButton = MouseHelper.getRightButton();
+        rightButton.setPressed(true, 2);
+        rightButton.setShowSwings(false);
     }
 
     private void releaseAutoblock() {
@@ -478,15 +477,8 @@ public final class KillAuraModule extends Module {
         this.grimDamageKeepTicks = 0;
         this.grimDamageWindowTicks = 0;
         this.haloTrailHeights.clear();
-        this.clearVelocityResetAttack();
         releaseAutoblock();
         super.onDisable();
-    }
-
-    private void clearVelocityResetAttack() {
-        this.velocityResetAttacks = 0;
-        this.velocityResetWindowTicks = 0;
-        this.velocityResetSprintSlowdown = null;
     }
 
     private final java.util.ArrayDeque<Double> haloTrailHeights = new java.util.ArrayDeque<>();

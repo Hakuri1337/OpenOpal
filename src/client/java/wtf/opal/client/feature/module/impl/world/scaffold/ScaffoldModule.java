@@ -224,6 +224,10 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
             return;
         }
 
+        if (this.isSilenceTellyMode()) {
+            return;
+        }
+
         if (this.settings.getMode().is(ScaffoldSettings.Mode.TELLY)) {
             return;
         }
@@ -238,6 +242,10 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
     @Subscribe(priority = 1)
     public void onHandleInput(final MouseHandleInputEvent event) {
         if (this.isUitemsMode()) {
+            return;
+        }
+
+        if (this.isSilenceTellyMode()) {
             return;
         }
 
@@ -337,6 +345,10 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
         final ScaffoldSettings.Mode effectiveMode = this.getEffectiveMode();
         if (effectiveMode == ScaffoldSettings.Mode.HEYPIXEL || effectiveMode == ScaffoldSettings.Mode.HYPIXEL) {
+            return;
+        }
+
+        if (effectiveMode == ScaffoldSettings.Mode.SILENCE_TELLY) {
             return;
         }
 
@@ -969,6 +981,10 @@ public final class ScaffoldModule extends Module implements IslandTrigger {
 
     public boolean isTellyMode() {
         return this.settings.getMode().is(ScaffoldSettings.Mode.TELLY);
+    }
+
+    public boolean isSilenceTellyMode() {
+        return this.getEffectiveMode() == ScaffoldSettings.Mode.SILENCE_TELLY;
     }
 
     private boolean isReplaceable(final BlockPos pos) {

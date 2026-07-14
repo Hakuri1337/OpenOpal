@@ -23,6 +23,9 @@ repositories {
 	maven {
 		url 'https://jitpack.io'
 	}
+	maven {
+		url 'https://repo.viaversion.com/'
+	}
 	mavenCentral()
 }
 
@@ -52,6 +55,15 @@ dependencies {
 	modImplementation include ('org.graalvm.polyglot:polyglot:23.1.0')
 	modImplementation include("net.hypixel:mod-api:1.0.1")
 	modImplementation include ('com.github.JnCrMx:discord-game-sdk4j:v0.5.5')
+	implementation include('javazoom:jlayer:1.0.1')
+	implementation include('org.jcodec:jcodec:0.2.5')
+	implementation include('org.jcodec:jcodec-javase:0.2.5')
+	modCompileOnly("com.viaversion:viafabricplus-api:4.3.6") {
+		transitive = false
+	}
+	compileOnly("com.viaversion:viaversion-common:5.6.0") {
+		transitive = false
+	}
 
 	modApi include("org.lwjgl:lwjgl-nanovg:3.3.3")
 	modRuntimeOnly include("org.lwjgl:lwjgl-nanovg:3.3.3:natives-linux")

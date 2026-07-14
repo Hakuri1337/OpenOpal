@@ -5,9 +5,13 @@ import wtf.opal.client.feature.module.property.Property;
 import wtf.opal.client.screen.click.dropdown.panel.property.PropertyPanel;
 import wtf.opal.client.screen.click.dropdown.panel.property.impl.ModePropertyComponent;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public final class ModeProperty<T extends Enum<T>> extends Property<T> {
 
     private final T[] values;
+    private final Map<String, T> aliases = new HashMap<>();
     private Module module;
 
     private boolean theme;
@@ -53,6 +57,11 @@ public final class ModeProperty<T extends Enum<T>> extends Property<T> {
 
     public T[] getValues() {
         return values;
+    }
+
+    public ModeProperty<T> alias(final String legacyValue, final T value) {
+        aliases.put(normalize(legacyValue), value);
+        return this;
     }
 
     public void setValueOrdinal(final int value) {
@@ -105,8 +114,13 @@ public final class ModeProperty<T extends Enum<T>> extends Property<T> {
                 if (normalize(possibleValue.name()).equals(normalizedValue)
                         || normalize(possibleValue.toString()).equals(normalizedValue)) {
                     setValueOrdinal(possibleValue.ordinal());
-                    break;
+                    return;
                 }
+            }
+
+            final T aliasedValue = aliases.get(normalizedValue);
+            if (aliasedValue != null) {
+                setValueOrdinal(aliasedValue.ordinal());
             }
         }
     }

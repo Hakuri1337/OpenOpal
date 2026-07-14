@@ -31,11 +31,11 @@ public final class HeypixelCriticals extends ModuleMode<CriticalsModule> {
 
     @Subscribe
     public void onMoveInput(final MoveInputEvent event) {
-        if (!this.autoJump.getValue() || mc.player == null || mc.world == null) {
+        if (!autoJump.getValue() || mc.player == null || mc.world == null) {
             return;
         }
 
-        if (this.hasHeadBlock() || mc.options.jumpKey.isPressed()) {
+        if (hasHeadBlock() || mc.options.jumpKey.isPressed()) {
             return;
         }
 
@@ -56,40 +56,42 @@ public final class HeypixelCriticals extends ModuleMode<CriticalsModule> {
 
     @Subscribe
     public void onAttack(final AttackEvent event) {
-        if (mc.player == null || mc.world == null || !(event.getTarget() instanceof LivingEntity living)) {
+        if (mc.player == null || mc.world == null) {
             return;
         }
 
-        if (this.cantCrit(living)) {
-            this.resetState();
-            this.module.debugDamage("Heypixel", living, false, "critical state unavailable");
+        if (!(event.getTarget() instanceof LivingEntity living)) {
+            return;
+        }
+
+        if (cantCrit(living)) {
+            resetState();
             return;
         }
 
         final KillAuraModule aura = OpalClient.getInstance().getModuleRepository().getModule(KillAuraModule.class);
         if (!aura.isEnabled()) {
-            this.resetState();
-            this.module.debugDamage("Heypixel", living, false, "KillAura disabled");
+            resetState();
             return;
         }
 
-        if (mc.player.getVelocity().y < 0.0D && !mc.player.isOnGround() && mc.player.distanceTo(living) <= this.range.getValue()) {
-            if (this.skipTicks.getValue() && !this.armedSkipTick) {
-                SkipTickUtility.addSkipTicks(1);
-                this.armedSkipTick = true;
+        if (mc.player.getVelocity().y < 0.0D && !mc.player.isOnGround() && mc.player.distanceTo(living) <= range.getValue()) {
+            if (skipTicks.getValue()) {
+                if (!armedSkipTick) {
+                    SkipTickUtility.addSkipTicks(1);
+                    armedSkipTick = true;
+                }
             }
-            final boolean cancelledSprint = this.cancelSprint();
-            this.module.debugDamage("Heypixel", living, true, "skip=" + this.skipTicks.getValue() + ", sprintCancelled=" + cancelledSprint);
+            cancelSprint();
         } else {
-            this.resetState();
-            this.module.debugDamage("Heypixel", living, false, "waiting fall window");
+            resetState();
         }
     }
 
     @Override
     public void onDisable() {
         super.onDisable();
-        this.resetState();
+        resetState();
         SkipTickUtility.reset();
     }
 
@@ -120,7 +122,7 @@ public final class HeypixelCriticals extends ModuleMode<CriticalsModule> {
                 || mc.player.isTouchingWater()
                 || mc.player.isInLava()
                 || mc.player.hasVehicle()
-                || this.hasHeadBlock()
+                || hasHeadBlock()
                 || living.hurtTime > 10
                 || living.getHealth() <= 0.0F;
     }

@@ -14,11 +14,15 @@ import wtf.opal.duck.ClientConnectionAccess;
 import wtf.opal.event.impl.game.PreGameTickEvent;
 import wtf.opal.event.impl.game.player.movement.PostMoveEvent;
 import wtf.opal.event.subscriber.Subscribe;
+import wtf.opal.utility.misc.chat.ChatUtility;
 import wtf.opal.utility.player.MoveUtility;
 
 import static wtf.opal.client.Constants.mc;
 
 public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
+
+    private static final int DAMAGE_TIMEOUT_TICKS = 24;
+    private static final int MAX_DAMAGE_ATTEMPTS = 4;
 
     private final NumberProperty horizontalSpeed = new NumberProperty("Horizontal Speed", 3.5D, 0.1D, 10.0D, 0.1D)
             .hideIf(() -> this.module.getActiveMode() != this);
@@ -35,7 +39,10 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
 
     private boolean hasBeenHurt;
     private boolean hasBeenTeleported;
+    private boolean waitingForDamage;
     private int reboostTicksLeft;
+    private int damageTicksLeft;
+    private int damageAttempts;
 
     public CubeCraftPingSpoofFlight(final FlightModule module) {
         super(module);
@@ -45,6 +52,26 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
     @Subscribe
     public void onPreGameTick(final PreGameTickEvent event) {
         if (mc.player == null || mc.world == null) {
+            return;
+        }
+
+        if (this.waitingForDamage) {
+            if (this.tryCompleteDamageBoost()) {
+                return;
+            }
+
+            if (this.damageTicksLeft-- > 0) {
+                return;
+            }
+
+            if (this.damageAttempts < MAX_DAMAGE_ATTEMPTS) {
+                this.boost();
+                return;
+            }
+
+            ChatUtility.print("CubeCraftPingSpoof failed to receive self-damage; disabling Flight.");
+            this.module.setEnabled(false);
+            MoveUtility.setSpeed(0.0D);
             return;
         }
 
@@ -69,15 +96,7 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
             return;
         }
 
-        if (mc.player.hurtTime > 0 && !this.hasBeenHurt) {
-            this.hasBeenHurt = true;
-            MoveUtility.setSpeed(this.horizontalSpeed.getValue());
-
-            if (!this.hasBeenTeleported && this.nostalgia.getValue()) {
-                this.hasBeenTeleported = true;
-                mc.player.setPosition(mc.player.getX(), mc.player.getY() + 0.42D, mc.player.getZ());
-            }
-        }
+        this.tryCompleteDamageBoost();
 
         if (!this.hasBeenHurt) {
             return;
@@ -104,6 +123,9 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
         }
 
         this.hasBeenHurt = false;
+        this.waitingForDamage = true;
+        this.damageTicksLeft = Math.max(DAMAGE_TIMEOUT_TICKS, Math.min(40, this.reboostTicks.getValue().intValue()));
+        this.damageAttempts++;
         this.sendPacketSilent(new PlayerMoveC2SPacket.PositionAndOnGround(
                 mc.player.getX(), mc.player.getY(), mc.player.getZ(),
                 false, mc.player.horizontalCollision
@@ -120,6 +142,27 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
                 mc.player.getX(), mc.player.getY(), mc.player.getZ(),
                 true, mc.player.horizontalCollision
         ));
+    }
+
+    private boolean tryCompleteDamageBoost() {
+        if (mc.player == null || mc.player.hurtTime <= 0 || this.hasBeenHurt) {
+            return false;
+        }
+
+        this.hasBeenHurt = true;
+        this.waitingForDamage = false;
+        this.damageAttempts = 0;
+        this.damageTicksLeft = 0;
+        this.reboostTicksLeft = this.reboostTicks.getValue().intValue();
+
+        MoveUtility.setSpeed(this.horizontalSpeed.getValue());
+
+        if (!this.hasBeenTeleported && this.nostalgia.getValue()) {
+            this.hasBeenTeleported = true;
+            mc.player.setPosition(mc.player.getX(), mc.player.getY() + 0.42D, mc.player.getZ());
+        }
+
+        return true;
     }
 
     private void sendPacketSilent(final Packet<?> packet) {
@@ -142,8 +185,11 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
 
         this.hasBeenHurt = false;
         this.hasBeenTeleported = false;
+        this.waitingForDamage = false;
+        this.reboostTicksLeft = 0;
+        this.damageTicksLeft = 0;
+        this.damageAttempts = 0;
         this.boost();
-        this.reboostTicksLeft = this.reboostTicks.getValue().intValue();
         super.onEnable();
     }
 
@@ -152,6 +198,11 @@ public final class CubeCraftPingSpoofFlight extends ModuleMode<FlightModule> {
         if (mc.player != null) {
             MoveUtility.setSpeed(0.0D);
         }
+        this.hasBeenHurt = false;
+        this.waitingForDamage = false;
+        this.reboostTicksLeft = 0;
+        this.damageTicksLeft = 0;
+        this.damageAttempts = 0;
         super.onDisable();
     }
 

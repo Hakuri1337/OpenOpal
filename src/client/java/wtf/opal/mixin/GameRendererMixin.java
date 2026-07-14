@@ -4,11 +4,19 @@ import com.google.common.base.Predicates;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.gl.Framebuffer;
+import net.minecraft.client.gui.render.GuiRenderer;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.ObjectAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
@@ -23,10 +31,22 @@ import wtf.opal.client.OpalClient;
 import wtf.opal.client.feature.module.impl.combat.PiercingModule;
 import wtf.opal.client.feature.module.impl.visual.NoFOVModule;
 import wtf.opal.client.feature.module.impl.visual.NoHurtCameraModule;
+import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldModule;
+import wtf.opal.client.renderer.liquidglass.reglass.LiquidGlassPipelines;
+import wtf.opal.client.renderer.liquidglass.reglass.LiquidGlassPrecomputeRuntime;
+import wtf.opal.client.renderer.liquidglass.reglass.LiquidGlassUniforms;
+import wtf.opal.client.renderer.liquidglass.reglass.ReGlassAnim;
+import wtf.opal.client.renderer.liquidglass.reglass.ReGlassConfig;
+import wtf.opal.client.renderer.liquidglass.reglass.gui.QuadVertexBufferProvider;
 import wtf.opal.client.renderer.shader.ShaderFramebuffer;
 import wtf.opal.event.EventDispatcher;
 import wtf.opal.event.impl.render.RenderWorldEvent;
+import wtf.opal.utility.player.MoveUtility;
 import wtf.opal.utility.player.RaycastUtility;
+
+import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 import static wtf.opal.client.Constants.mc;
 
@@ -39,6 +59,83 @@ public abstract class GameRendererMixin {
 
     @Unique
     private boolean passThroughBlocks;
+
+    @Inject(method = "render", at = @At("HEAD"))
+    private void opal$beginLiquidGlassFrame(final RenderTickCounter tickCounter, final boolean tick,
+                                            final CallbackInfo ci) {
+        double deltaTicks;
+        try {
+            deltaTicks = tickCounter.getDynamicDeltaTicks();
+        } catch (Throwable ignored) {
+            deltaTicks = 1.0 / 60.0 * 20.0;
+        }
+        final double deltaSeconds = deltaTicks / 20.0;
+        LiquidGlassUniforms.get().beginFrame(deltaSeconds);
+        ReGlassAnim.INSTANCE.update(ReGlassConfig.INSTANCE, deltaSeconds);
+    }
+
+    @Inject(method = "renderBlur", at = @At("HEAD"), cancellable = true)
+    private void opal$renderLiquidGlass(final CallbackInfo ci) {
+        final LiquidGlassUniforms uniforms = LiquidGlassUniforms.get();
+        if (uniforms.getCount() == 0) {
+            return;
+        }
+
+        ci.cancel();
+        uniforms.logCompositeOnce();
+        uniforms.uploadSharedUniforms();
+        uniforms.uploadWidgetInfo();
+
+        final List<Integer> radii = uniforms.getUsedBlurRadiiOrdered();
+        final LiquidGlassPrecomputeRuntime precompute = LiquidGlassPrecomputeRuntime.get();
+        precompute.setRequestedRadii(radii);
+        precompute.run();
+
+        final Framebuffer mainFramebuffer = mc.getFramebuffer();
+        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "opal liquid glass composite",
+                mainFramebuffer.getColorAttachmentView(),
+                OptionalInt.empty(),
+                mainFramebuffer.useDepthAttachment ? mainFramebuffer.getDepthAttachmentView() : null,
+                OptionalDouble.empty()
+        )) {
+            final RenderPipeline pipeline = LiquidGlassPipelines.getGuiPipeline();
+            pass.setPipeline(pipeline);
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("SamplerInfo", uniforms.getSamplerInfoBuffer());
+            pass.setUniform("CustomUniforms", uniforms.getCustomUniformsBuffer());
+            pass.setUniform("WidgetInfo", uniforms.getWidgetInfoBuffer());
+            pass.setUniform("BgConfig", uniforms.getBgConfigBuffer());
+            pass.bindSampler("Sampler0", precompute.getSourceView());
+
+            final GuiRenderer guiRenderer = ((GameRendererAccessor) (Object) this).getGuiRenderer();
+            final GpuBuffer quadVertexBuffer = ((QuadVertexBufferProvider) guiRenderer).getQuadVertexBuffer();
+            final RenderSystem.ShapeIndexBuffer indexBufferInfo =
+                    RenderSystem.getSequentialBuffer(VertexFormat.DrawMode.QUADS);
+            final GpuBuffer indexBuffer = indexBufferInfo.getIndexBuffer(6);
+            pass.setVertexBuffer(0, quadVertexBuffer);
+            pass.setIndexBuffer(indexBuffer, indexBufferInfo.getIndexType());
+
+            for (int index = 0; index < LiquidGlassUniforms.MAX_BLUR_LEVELS; index++) {
+                final String samplerName = switch (index) {
+                    case 0 -> "Sampler1";
+                    case 1 -> "Sampler2";
+                    case 2 -> "Sampler3";
+                    case 3 -> "Sampler4";
+                    default -> "Sampler5";
+                };
+                final int radius = radii.isEmpty() ? 0 : radii.get(Math.min(index, radii.size() - 1));
+                pass.bindSampler(
+                        samplerName,
+                        radius <= 0
+                                ? precompute.getSourceView()
+                                : precompute.getBlurredViewForRadius(radius)
+                );
+            }
+
+            pass.drawIndexed(0, 0, 6, 1);
+        }
+    }
 
     @Inject(method = "onResized", at = @At("HEAD"))
     private void hookOnResized(int width, int height, CallbackInfo ci) {
@@ -105,6 +202,20 @@ public abstract class GameRendererMixin {
     private void hookNoFov(Camera camera, float tickDelta, boolean changingFov, CallbackInfoReturnable<Float> cir) {
         if (OpalClient.getInstance().getModuleRepository().getModule(NoFOVModule.class).isEnabled()) {
             cir.setReturnValue(mc.options.getFov().getValue().floatValue());
+            return;
+        }
+
+        final ScaffoldModule scaffold = OpalClient.getInstance().getModuleRepository().getModule(ScaffoldModule.class);
+        if (scaffold.isEnabled()
+                && scaffold.isSilenceTellyMode()
+                && scaffold.getSettings().isSilenceTellyKeepFov()
+                && mc.player != null
+                && MoveUtility.isMoving()) {
+            float fov = scaffold.getSettings().getSilenceTellyFov();
+            if (mc.player.hasStatusEffect(StatusEffects.SPEED)) {
+                fov += (mc.player.getStatusEffect(StatusEffects.SPEED).getAmplifier() + 1) * 0.13F;
+            }
+            cir.setReturnValue(fov);
         }
     }
 }

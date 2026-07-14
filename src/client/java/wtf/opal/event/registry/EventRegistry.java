@@ -1,7 +1,5 @@
 package wtf.opal.event.registry;
 
-import wtf.opal.event.impl.press.KeyPressEvent;
-import wtf.opal.event.impl.press.MousePressEvent;
 import wtf.opal.event.listener.ListenerMethod;
 import wtf.opal.event.subscriber.IEventSubscriber;
 import wtf.opal.event.subscriber.Subscribe;
@@ -27,7 +25,7 @@ public final class EventRegistry {
             final Class<?> type = method.getParameterTypes()[0];
             final MethodType methodType = MethodType.methodType(void.class, type);
             try {
-                MethodHandles.Lookup privateLookup = Modifier.isPrivate(method.getModifiers()) ? MethodHandles.privateLookupIn(clazzOwner, LOOKUP) : LOOKUP;
+                final MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(clazzOwner, LOOKUP);
 
                 final MethodHandle methodHandle = privateLookup.findVirtual(
                         clazzOwner,
@@ -64,12 +62,6 @@ public final class EventRegistry {
 
     @SuppressWarnings("ForLoopReplaceableByForEach")
     public void dispatch(final Object event) {
-//        if (ClientSocket.getInstance() == null) return;
-//
-//        if (!ClientSocket.getInstance().isAuthenticated() && (event instanceof KeyPressEvent || event instanceof MousePressEvent)) {
-//            return;
-//        }
-
         final List<ListenerMethod> listenerMethods = subscriberMap.get(event.getClass());
         if (listenerMethods != null) {
             for (int i = 0; i < listenerMethods.size(); i++) {

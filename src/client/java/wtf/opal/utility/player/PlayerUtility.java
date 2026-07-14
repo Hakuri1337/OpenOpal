@@ -249,7 +249,7 @@ public final class PlayerUtility {
         double protection = 0;
         final AttributeModifiersComponent attributeModifiersComponent = stack.getOrDefault(DataComponentTypes.ATTRIBUTE_MODIFIERS, AttributeModifiersComponent.DEFAULT);
         for (AttributeModifiersComponent.Entry entry : attributeModifiersComponent.modifiers()) {
-            if (entry.attribute() != EntityAttributes.ARMOR) {
+            if (!entry.attribute().equals(EntityAttributes.ARMOR)) {
                 continue;
             }
             EntityAttributeModifier modifier = entry.modifier();

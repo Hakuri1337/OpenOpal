@@ -1,6 +1,7 @@
 package wtf.opal.client.renderer.shader;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.gl.PostEffectProcessor;
 import net.minecraft.client.gl.WindowFramebuffer;
@@ -14,11 +15,13 @@ import wtf.opal.client.feature.module.impl.visual.PostProcessingModule;
 import wtf.opal.client.renderer.NVGRenderer;
 import wtf.opal.mixin.GameRendererAccessor;
 import wtf.opal.utility.render.FramebufferUtility;
+import org.slf4j.Logger;
 
 import static wtf.opal.client.Constants.mc;
 
 public final class ShaderFramebuffer {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static Framebuffer blurFramebuffer, glowFramebuffer;
 
     private static final Identifier BLUR_IDENTIFIER = Identifier.ofVanilla("blur");
@@ -56,10 +59,19 @@ public final class ShaderFramebuffer {
         renderBlurToFramebuffer(glowFramebuffer, postProcessingModule.getBloomRadius());
     }
 
+    public static void captureMenuBlur(final int radius) {
+        if (blurFramebuffer == null || mc.getOverlay() instanceof SplashOverlay) {
+            return;
+        }
+        FramebufferUtility.blit(mc.getFramebuffer(), blurFramebuffer);
+        renderBlurToFramebuffer(blurFramebuffer, radius);
+    }
+
     private static void renderBlurToFramebuffer(final Framebuffer framebuffer, final int radius) {
-        if(mc.getOverlay() instanceof SplashOverlay splashOverlay) {
+        if (mc.getOverlay() instanceof SplashOverlay) {
+            // A resource reload can begin while the current frame graph still owns this processor.
+            // Closing it here invalidates its MappableRingBuffer before vanilla finishes renderBlur.
             postEffectProcessor = null;
-            // TODO: hacky fix, but should work KEKW
             return;
         }
 
@@ -73,8 +85,14 @@ public final class ShaderFramebuffer {
                     Identifier.ofVanilla("main"), frameGraphBuilder.createObjectNode("main", framebuffer)
             );
             CUSTOM_UNIFORM.use(mc.getWindow().getFramebufferWidth(), mc.getWindow().getFramebufferHeight(), radius, () -> {
-                postEffectProcessor.render(frameGraphBuilder, framebuffer.textureWidth, framebuffer.textureHeight, framebufferSet);
-                frameGraphBuilder.run(((GameRendererAccessor) mc.gameRenderer).getPool());
+                try {
+                    postEffectProcessor.render(frameGraphBuilder, framebuffer.textureWidth, framebuffer.textureHeight, framebufferSet);
+                    frameGraphBuilder.run(((GameRendererAccessor) mc.gameRenderer).getPool());
+                } catch (IllegalStateException exception) {
+                    // Shader/resource reloads may retire a post effect between frames. Rebuild it on the next frame.
+                    LOGGER.debug("Discarding stale OpenOpal post effect after GPU resource invalidation", exception);
+                    postEffectProcessor = null;
+                }
             });
         }
     }

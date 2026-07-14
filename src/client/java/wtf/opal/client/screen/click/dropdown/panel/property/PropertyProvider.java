@@ -4,6 +4,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.input.KeyInput;
 import wtf.opal.client.feature.module.property.IPropertyListProvider;
 import wtf.opal.client.feature.module.property.Property;
+import wtf.opal.client.feature.module.property.impl.ScreenPositionProperty;
 import wtf.opal.client.screen.click.OpalPanelComponent;
 
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ public final class PropertyProvider extends OpalPanelComponent {
             final PropertyPanel<?> clickGUIComponent = property.createClickGUIComponent();
             if (clickGUIComponent != null) {
                 this.propertyPanelList.add(clickGUIComponent);
-            } else {
+            } else if (!(property instanceof ScreenPositionProperty)) {
                 System.err.println("Unimplemented property: " + property.getClass().getSimpleName());
             }
         }
@@ -46,7 +47,7 @@ public final class PropertyProvider extends OpalPanelComponent {
     private boolean hasProperties, updated;
 
     private void updateHasProperties() {
-        this.hasProperties = this.propertyListProvider.getPropertyList().stream().anyMatch(p -> !p.isHidden());
+        this.hasProperties = this.propertyPanelList.stream().anyMatch(propertyPanel -> !propertyPanel.isHidden());
     }
 
     private boolean isClosed() {

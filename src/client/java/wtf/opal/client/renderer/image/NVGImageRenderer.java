@@ -60,6 +60,15 @@ public final class NVGImageRenderer {
         nvgClosePath(VG);
     }
 
+    public void drawRoundedImage(final float x, final float y, final float width, final float height, final float radius) {
+        nvgBeginPath(VG);
+        nvgRoundedRect(VG, x, y, width, height, radius);
+        nvgImagePattern(VG, x, y, width, height, 0, imageHandle, 1, NVGRenderer.NVG_PAINT);
+        nvgFillPaint(VG, NVGRenderer.NVG_PAINT);
+        nvgFill(VG);
+        nvgClosePath(VG);
+    }
+
     public void drawImage(final float x, final float y, final float width, final float height, final int colorOverlay) {
         nvgImagePattern(
                 VG,

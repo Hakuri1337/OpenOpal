@@ -28,13 +28,17 @@ import wtf.opal.event.impl.game.player.movement.step.StepSuccessEvent;
 
 import static wtf.opal.client.Constants.mc;
 
-import java.lang.reflect.Field;
-
 @Mixin(Entity.class)
 public abstract class EntityMixin {
 
     @Shadow
     private World world;
+
+    @Shadow
+    public abstract void slowMovement(BlockState state, Vec3d multiplier);
+
+    @Unique
+    private boolean slowMovementFlag;
 
     private EntityMixin() {
     }
@@ -112,16 +116,32 @@ public abstract class EntityMixin {
 
     @Inject(
             method = "slowMovement",
-            at = @At("TAIL")
+            at = @At("HEAD"),
+            cancellable = true
     )
     private void hookSlowMovement(final BlockState state, final Vec3d motion, final CallbackInfo ci) {
         if ((Object) this != mc.player) {
             return;
         }
 
+        if (this.slowMovementFlag) {
+            return;
+        }
+
         final StuckInBlockEvent event = new StuckInBlockEvent(state, motion);
         EventDispatcher.dispatch(event);
-        this.setStuckSpeedMultiplierReflectively(event.getMotion());
+
+        if (event.isCancelled()) {
+            ci.cancel();
+            return;
+        }
+
+        if (!event.getMotion().equals(motion)) {
+            this.slowMovementFlag = true;
+            this.slowMovement(state, event.getMotion());
+            this.slowMovementFlag = false;
+            ci.cancel();
+        }
     }
 
 //    @Inject(
@@ -174,21 +194,6 @@ public abstract class EntityMixin {
     private void checkRotation() {
         if (mc.player != null && (Object) this == mc.player && this.world.isClient()) {
             RotationHelper.getClientHandler().onRotationSet();
-        }
-    }
-
-    @Unique
-    private void setStuckSpeedMultiplierReflectively(final Vec3d motion) {
-        final String[] fieldNames = {"stuckSpeedMultiplier", "movementMultiplier"};
-
-        for (final String fieldName : fieldNames) {
-            try {
-                final Field field = Entity.class.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                field.set(this, motion);
-                return;
-            } catch (ReflectiveOperationException ignored) {
-            }
         }
     }
 

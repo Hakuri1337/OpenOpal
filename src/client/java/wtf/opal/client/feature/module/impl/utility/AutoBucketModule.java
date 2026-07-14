@@ -3,7 +3,6 @@ package wtf.opal.client.feature.module.impl.utility;
 import net.minecraft.block.BlockState;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -13,7 +12,7 @@ import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import wtf.opal.client.feature.helper.impl.player.rotation.RotationHelper;
-import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.HeypixelRotationModel;
+import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.InstantRotationModel;
 import wtf.opal.client.feature.helper.impl.player.slot.SlotHelper;
 import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
@@ -28,10 +27,8 @@ import static wtf.opal.client.Constants.mc;
 
 public final class AutoBucketModule extends Module {
 
-    private static final float BUCKET_ROTATION_SPEED = 38.0F;
     private static final float BUCKET_ROTATION_READY_DIFFERENCE = 3.5F;
     private static final float MAX_BUCKET_PITCH = 88.0F;
-    private static final int MIN_MLG_PREPARE_TICKS = 4;
 
     private final BooleanProperty mlg = new BooleanProperty("MLG", true);
     private final NumberProperty fallDistance = new NumberProperty("Fall Distance", 3.0D, 1.0D, 10.0D, 0.1D)
@@ -68,6 +65,7 @@ public final class AutoBucketModule extends Module {
     private int helperRetrieveSlot = -1;
     private BlockPos helperPlacedWaterPos;
     private int helperCooldownTicks;
+    private int helperRetrieveDelay;
 
     public AutoBucketModule() {
         super("AutoBucket", "Handles water bucket MLG and helper recovery.", ModuleCategory.UTILITY);
@@ -127,28 +125,16 @@ public final class AutoBucketModule extends Module {
             return true;
         }
 
-        if (this.waterPlaced && !this.readyToPlace && mc.player.getVelocity().y < 0.0D) {
-            final double distance = this.distanceToGround(2.5D);
-            if (distance > 0.0D && distance <= 1.05D) {
-                this.readyToPlace = true;
-            }
-        }
+        final double remainingDistance = this.distanceToGround(8.0D);
 
         if (this.waterPlaced) {
             if (this.mlgPlacedWaterPos == null && this.retryCooldown == 0) {
-                final double distance = this.distanceToGround(2.5D);
-                if (distance > 0.0D && distance <= 1.35D) {
-                    final int waterSlot = this.findWaterBucketSlot();
-                    final BlockHitResult hit = this.findMlgPlacementHit();
-                    if (waterSlot != -1 && hit != null) {
-                        final Vec2f rotation = this.getSafeRotationTo(hit.getPos(), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
-                        this.requestRotation(rotation);
-                        final BlockHitResult verifiedHit = this.getVerifiedSolidHit(rotation, hit);
-                        if (verifiedHit != null) {
-                            this.placeMlgWaterBucket(waterSlot, verifiedHit, false);
-                        }
-                        this.retryCooldown = 2;
+                if (remainingDistance > 0.0D && remainingDistance <= 1.35D) {
+                    final int retrySlot = this.findWaterBucketSlot();
+                    if (retrySlot != -1) {
+                        this.placeMlgWaterBucket(retrySlot, false);
                     }
+                    this.retryCooldown = 2;
                 }
             }
             return true;
@@ -158,7 +144,8 @@ public final class AutoBucketModule extends Module {
             return true;
         }
 
-        if (this.accumulatedFall < this.fallDistance.getValue().floatValue()) {
+        final double effectiveFallDistance = Math.max(this.accumulatedFall, mc.player.fallDistance);
+        if (effectiveFallDistance < this.fallDistance.getValue().floatValue() || mc.player.getVelocity().y >= -0.08D) {
             return false;
         }
 
@@ -167,31 +154,16 @@ public final class AutoBucketModule extends Module {
             return true;
         }
 
-        if (this.solidCheck.getValue() && !this.hasSolidBelow(mc.player.getBlockPos())) {
+        if (this.solidCheck.getValue() && remainingDistance == Double.POSITIVE_INFINITY) {
             return true;
         }
 
-        final int ticksUntilGround = this.ticksUntilGround();
-        if (ticksUntilGround > Math.max(this.predictTicks.getValue().intValue(), MIN_MLG_PREPARE_TICKS)) {
+        if (!(remainingDistance > 0.0D && remainingDistance <= this.getMlgPlaceDistance())) {
             this.clearPendingMlgPlacement();
             return true;
         }
 
-        if (!this.updatePendingMlgPlacement()) {
-            return true;
-        }
-
-        this.requestRotation(this.pendingMlgRotation);
-        if (ticksUntilGround > this.predictTicks.getValue().intValue()) {
-            return true;
-        }
-
-        final BlockHitResult verifiedHit = this.getVerifiedSolidHit(this.pendingMlgRotation, this.pendingMlgHit);
-        if (verifiedHit == null) {
-            return true;
-        }
-
-        this.placeMlgWaterBucket(waterSlot, verifiedHit, true);
+        this.placeMlgWaterBucket(waterSlot, true);
         return true;
     }
 
@@ -215,25 +187,21 @@ public final class AutoBucketModule extends Module {
             return;
         }
 
-        final BlockHitResult hit = this.findSelfBucketPlacementHit();
-        if (hit == null) {
-            return;
-        }
-
-        final Vec2f rotation = this.getSafeRotationTo(hit.getPos(), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
+        final Vec2f rotation = new Vec2f(mc.player.getYaw(), MAX_BUCKET_PITCH);
         this.requestRotation(rotation);
-        final BlockHitResult verifiedHit = this.getVerifiedSolidHit(rotation, hit);
-        if (verifiedHit == null) {
+        final BlockPos placedWaterPos = this.computePlacedWaterPos(rotation);
+        if (placedWaterPos == null) {
             return;
         }
 
         this.saveAndSwitch(waterSlot);
-        this.useBlock(verifiedHit);
+        this.useItem();
 
         this.helperRetrievePending = true;
-        this.helperRetrieveTriesLeft = 2;
+        this.helperRetrieveTriesLeft = 8;
         this.helperRetrieveSlot = -1;
-        this.helperPlacedWaterPos = verifiedHit.getBlockPos().offset(verifiedHit.getSide());
+        this.helperPlacedWaterPos = placedWaterPos;
+        this.helperRetrieveDelay = 3;
         this.helperCooldownTicks = 8;
     }
 
@@ -308,7 +276,7 @@ public final class AutoBucketModule extends Module {
         }
 
         this.saveAndSwitch(emptySlot);
-        this.useBlock(hit);
+        this.useItem();
         this.postActionCooldown = 8;
         this.postPlaceCooldown = Math.max(this.postPlaceCooldown, 1);
         return true;
@@ -320,15 +288,10 @@ public final class AutoBucketModule extends Module {
             return;
         }
 
-        if (this.mlgRecoveryTriesLeft-- <= 0) {
-            this.clearMlgRecovery();
-            return;
-        }
-
         if (this.mlgRecoverySlot == -1) {
             this.mlgRecoverySlot = this.findEmptyBucketSlot();
             if (this.mlgRecoverySlot == -1) {
-                this.clearMlgRecovery();
+                this.retryMlgRecovery();
                 return;
             }
         }
@@ -340,35 +303,46 @@ public final class AutoBucketModule extends Module {
             return;
         }
 
-        if (this.mlgPlacedWaterPos == null || !this.isWaterSource(this.mlgPlacedWaterPos)) {
-            this.clearMlgRecovery();
+        final BlockPos waterSource = this.findRecoverableWaterSource(this.mlgPlacedWaterPos, 1);
+        if (waterSource == null) {
+            this.retryMlgRecovery();
             return;
         }
 
-        final Vec2f rotation = this.getSafeRotationTo(Vec3d.ofCenter(this.mlgPlacedWaterPos), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
+        this.mlgPlacedWaterPos = waterSource;
+        final Vec2f rotation = this.getSafeRotationTo(Vec3d.ofCenter(waterSource), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
         this.requestRotation(rotation);
         if (!this.isRotationReady(rotation)) {
+            this.retryMlgRecovery();
             return;
         }
 
-        final BlockHitResult hit = this.raycastFluid(this.getCurrentRotation(), 4.5D);
-        if (hit.getType() == HitResult.Type.MISS || !hit.getBlockPos().equals(this.mlgPlacedWaterPos)) {
-            this.clearMlgRecovery();
+        final BlockHitResult hit = this.raycastFluid(this.getCurrentRotation(), mc.player.getBlockInteractionRange());
+        if (hit.getType() == HitResult.Type.MISS || !this.isWaterSource(hit.getBlockPos())
+                || hit.getBlockPos().getSquaredDistance(this.mlgPlacedWaterPos) > 4.0D) {
+            this.retryMlgRecovery();
             return;
         }
 
+        this.mlgPlacedWaterPos = hit.getBlockPos().toImmutable();
         this.saveAndSwitch(this.mlgRecoverySlot);
-        this.useBlock(hit);
+        this.useItem();
+        this.mlgRecoveryTriesLeft--;
+        this.mlgRecoveryDelay = 2;
     }
 
-    private void placeMlgWaterBucket(final int slot, final BlockHitResult hit, final boolean markPlaced) {
-        if (hit == null || hit.getType() == HitResult.Type.MISS) {
+    private void placeMlgWaterBucket(final int slot, final boolean markPlaced) {
+        final Vec2f rotation = new Vec2f(mc.player.getYaw(), MAX_BUCKET_PITCH);
+        this.requestRotation(rotation);
+
+        final BlockPos placedPos = this.computePlacedWaterPos(rotation);
+        if (placedPos == null) {
             return;
         }
 
-        this.mlgPlacedWaterPos = hit.getBlockPos().offset(hit.getSide());
+        this.mlgPlacedWaterPos = placedPos;
         this.saveAndSwitch(slot);
-        this.useBlock(hit);
+        this.useItem();
 
         if (markPlaced) {
             this.waterPlaced = true;
@@ -376,7 +350,7 @@ public final class AutoBucketModule extends Module {
 
         this.mlgRecoveryActive = this.recovery.getValue() && this.mlgPlacedWaterPos != null;
         this.mlgRecoveryDelay = 3;
-        this.mlgRecoveryTriesLeft = this.mlgRecoveryActive ? 2 : 0;
+        this.mlgRecoveryTriesLeft = this.mlgRecoveryActive ? 16 : 0;
         this.mlgRecoverySlot = -1;
         this.retryCooldown = 2;
         this.clearPendingMlgPlacement();
@@ -387,16 +361,15 @@ public final class AutoBucketModule extends Module {
             this.clearHelperRetrieve();
             return;
         }
-
-        if (this.helperRetrieveTriesLeft-- <= 0) {
-            this.clearHelperRetrieve();
+        if (this.helperRetrieveDelay > 0) {
+            this.helperRetrieveDelay--;
             return;
         }
 
         if (this.helperRetrieveSlot == -1) {
             this.helperRetrieveSlot = this.findEmptyBucketSlot();
             if (this.helperRetrieveSlot == -1) {
-                this.clearHelperRetrieve();
+                this.retryHelperRetrieve();
                 return;
             }
         }
@@ -406,25 +379,32 @@ public final class AutoBucketModule extends Module {
             return;
         }
 
-        if (this.helperPlacedWaterPos == null || !this.isWaterSource(this.helperPlacedWaterPos)) {
-            this.clearHelperRetrieve();
+        final BlockPos waterSource = this.findRecoverableWaterSource(this.helperPlacedWaterPos, 1);
+        if (waterSource == null) {
+            this.retryHelperRetrieve();
             return;
         }
 
-        final Vec2f rotation = this.getSafeRotationTo(Vec3d.ofCenter(this.helperPlacedWaterPos), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
+        this.helperPlacedWaterPos = waterSource;
+        final Vec2f rotation = this.getSafeRotationTo(Vec3d.ofCenter(waterSource), this.getCurrentRotation().x, MAX_BUCKET_PITCH);
         this.requestRotation(rotation);
         if (!this.isRotationReady(rotation)) {
+            this.retryHelperRetrieve();
             return;
         }
 
-        final BlockHitResult hit = this.raycastFluid(this.getCurrentRotation(), 4.5D);
-        if (hit.getType() == HitResult.Type.MISS || !hit.getBlockPos().equals(this.helperPlacedWaterPos)) {
-            this.clearHelperRetrieve();
+        final BlockHitResult hit = this.raycastFluid(this.getCurrentRotation(), mc.player.getBlockInteractionRange());
+        if (hit.getType() == HitResult.Type.MISS || !this.isWaterSource(hit.getBlockPos())
+                || hit.getBlockPos().getSquaredDistance(this.helperPlacedWaterPos) > 4.0D) {
+            this.retryHelperRetrieve();
             return;
         }
 
+        this.helperPlacedWaterPos = hit.getBlockPos().toImmutable();
         this.saveAndSwitch(this.helperRetrieveSlot);
-        this.useBlock(hit);
+        this.useItem();
+        this.helperRetrieveTriesLeft--;
+        this.helperRetrieveDelay = 2;
     }
 
     private boolean shouldExtinguish() {
@@ -646,6 +626,63 @@ public final class AutoBucketModule extends Module {
         return !mc.world.getFluidState(pos).isEmpty() && mc.world.getFluidState(pos).isStill();
     }
 
+    private BlockPos findRecoverableWaterSource(final BlockPos expected, final int radius) {
+        if (expected == null) return null;
+        BlockPos best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    final BlockPos candidate = expected.add(x, y, z);
+                    if (!this.isWaterSource(candidate)) continue;
+                    final double reach = mc.player.getEyePos().squaredDistanceTo(Vec3d.ofCenter(candidate));
+                    if (reach > mc.player.getBlockInteractionRange() * mc.player.getBlockInteractionRange()) continue;
+                    final double score = candidate.getSquaredDistance(expected) + reach * 0.01D;
+                    if (score < bestScore) {
+                        bestScore = score;
+                        best = candidate.toImmutable();
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private void retryMlgRecovery() {
+        if (--this.mlgRecoveryTriesLeft <= 0) {
+            this.clearMlgRecovery();
+        } else {
+            this.mlgRecoveryDelay = 1;
+            this.mlgRecoverySlot = -1;
+        }
+    }
+
+    private void retryHelperRetrieve() {
+        if (--this.helperRetrieveTriesLeft <= 0) {
+            this.clearHelperRetrieve();
+        } else {
+            this.helperRetrieveSlot = -1;
+            this.helperRetrieveDelay = 1;
+        }
+    }
+
+    private double getMlgPlaceDistance() {
+        return MathHelper.clamp(0.75D + this.predictTicks.getValue() * 0.75D, 1.35D, 3.0D);
+    }
+
+    private BlockPos computePlacedWaterPos(final Vec2f rotation) {
+        final BlockHitResult hit = this.raycastSolid(rotation, 4.5D);
+        if (hit.getType() == HitResult.Type.MISS) {
+            return null;
+        }
+        return hit.getBlockPos().offset(hit.getSide());
+    }
+
+    private Vec2f getLookDownRotationTo(final BlockPos pos) {
+        final Vec2f raw = RotationUtility.getRotationFromPosition(Vec3d.ofCenter(pos));
+        return new Vec2f(RotationUtility.getDuplicateWrapped(raw.x, this.getCurrentRotation().x), MAX_BUCKET_PITCH);
+    }
+
     private Vec2f getSafeRotationTo(final Vec3d target, final float yawReference, final float maxPitch) {
         final Vec2f raw = RotationUtility.getRotationFromPosition(target);
         final float yaw = RotationUtility.getDuplicateWrapped(raw.x, yawReference);
@@ -656,7 +693,7 @@ public final class AutoBucketModule extends Module {
     private void requestRotation(final Vec2f rotation) {
         this.lastRequestedYaw = rotation.x;
         this.lastRequestedPitch = rotation.y;
-        RotationHelper.getHandler().rotate(rotation, new HeypixelRotationModel(BUCKET_ROTATION_SPEED));
+        RotationHelper.getHandler().rotate(rotation, InstantRotationModel.INSTANCE);
     }
 
     private Vec2f getCurrentRotation() {
@@ -697,11 +734,11 @@ public final class AutoBucketModule extends Module {
         SlotHelper.setCurrentItem(targetSlot);
     }
 
-    private void useBlock(final BlockHitResult hitResult) {
-        final ActionResult result = mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, hitResult);
-        if (!result.isAccepted()) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+    private void useItem() {
+        if (mc.player == null || mc.interactionManager == null) {
+            return;
         }
+        mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
         mc.player.swingHand(Hand.MAIN_HAND);
     }
 
@@ -743,6 +780,7 @@ public final class AutoBucketModule extends Module {
         this.helperRetrieveTriesLeft = 0;
         this.helperRetrieveSlot = -1;
         this.helperPlacedWaterPos = null;
+        this.helperRetrieveDelay = 0;
     }
 
     private void clearPendingMlgPlacement() {

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="brand" x1="0.12" y1="0.08" x2="0.82" y2="0.92">
+      <stop offset="0" stop-color="#53bcfd"/>
+      <stop offset="0.48" stop-color="#36a8ef"/>
+      <stop offset="1" stop-color="#83dff2"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#brand)" fill-rule="evenodd" d="M64 0A64 64 0 1 1 64 128A64 64 0 1 1 64 0Z
+    M58 13C54 17 51 25 53 32C54 39 66 49 97 64C84 66 72 80 61 91C55 96 50 98 47 98
+    C50 92 52 86 51 79C50 70 42 59 40 51C37 40 40 29 47 21C51 17 55 14 58 13Z"/>
+</svg>

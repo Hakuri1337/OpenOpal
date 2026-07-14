@@ -12,7 +12,8 @@ public final class SpeedModule extends Module {
     public SpeedModule() {
         super("Speed", "You become a cheetah in real life.", ModuleCategory.MOVEMENT);
         addProperties(mode);
-        addModuleModes(mode, new VanillaSpeed(this), new StrafeSpeed(this), new MushMCSpeed(this));
+        addModuleModes(mode, new VanillaSpeed(this), new CubeCraftLowHopSpeed(this), new StrafeSpeed(this),
+                new MushMCSpeed(this), new CubeCraftFastSpeed(this));
     }
 
     @Override
@@ -22,9 +23,10 @@ public final class SpeedModule extends Module {
 
     public enum Mode {
         VANILLA("Vanilla"),
-        WATCHDOG("Watchdog"),
+        CUBECRAFT_LOW_HOP("CubeCraftLowHop"),
         STRAFE("Strafe"),
-        MUSHMC("MushMC");
+        MUSHMC("MushMC"),
+        CUBECRAFT_FAST("CubeCraftFast");
 
         private final String name;
 

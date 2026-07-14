@@ -2,8 +2,6 @@ package wtf.opal.client.feature.module.impl.utility.inventory.manager;
 
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.EquippableComponent;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.*;
 import net.minecraft.network.packet.Packet;
@@ -21,6 +19,7 @@ import wtf.opal.client.feature.module.ModuleCategory;
 import wtf.opal.client.feature.module.impl.combat.killaura.KillAuraModule;
 import wtf.opal.client.feature.module.impl.movement.InventoryMoveModule;
 import wtf.opal.client.feature.module.impl.utility.inventory.AutoArmorModule;
+import wtf.opal.client.feature.module.impl.utility.inventory.AcaInventoryActionScheduler;
 import wtf.opal.client.feature.module.impl.utility.inventory.ChestStealerModule;
 import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldModule;
 import wtf.opal.client.feature.module.repository.ModuleRepository;
@@ -34,6 +33,7 @@ import wtf.opal.event.subscriber.Subscribe;
 import wtf.opal.utility.misc.chat.ChatUtility;
 import wtf.opal.utility.misc.time.Stopwatch;
 import wtf.opal.utility.player.InventoryUtility;
+import wtf.opal.utility.player.MinibloxArmorUtility;
 import wtf.opal.utility.player.MoveUtility;
 
 import java.util.ArrayList;
@@ -45,10 +45,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import static wtf.opal.client.Constants.mc;
 
 public final class InventoryManagerModule extends Module {
+    private static final int MAX_INSTANT_ACTIONS_PER_TICK = 64;
 
     private final InventoryManagerSettings settings = new InventoryManagerSettings(this);
 
     public final Stopwatch stopwatch = new Stopwatch();
+    private final AcaInventoryActionScheduler actionScheduler = AcaInventoryActionScheduler.getInstance();
 
     private boolean pendingOffhandPlace;
     private int inventoryOpenTicks;
@@ -60,6 +62,8 @@ public final class InventoryManagerModule extends Module {
     private boolean performingAction;
     private boolean releasingPendingPackets;
     private boolean pendingSyntheticClose;
+    private boolean wasInventoryScreenOpen;
+    private boolean managementSessionActive;
     private final Queue<Packet<?>> pendingPackets = new ConcurrentLinkedQueue<>();
     private final Stopwatch bufferedPacketStopwatch = new Stopwatch(0L);
 
@@ -79,6 +83,8 @@ public final class InventoryManagerModule extends Module {
         this.performingAction = false;
         this.releasingPendingPackets = false;
         this.pendingSyntheticClose = false;
+        this.wasInventoryScreenOpen = false;
+        this.managementSessionActive = false;
         this.pendingPackets.clear();
         this.bufferedPacketStopwatch.setTime(0L);
         super.onDisable();
@@ -117,22 +123,32 @@ public final class InventoryManagerModule extends Module {
             }
         }
 
-        if (!shouldCacheInventoryPackets() || releasingPendingPackets) {
+        if (releasingPendingPackets) {
             return;
         }
 
-        if (event.getPacket() instanceof ClickSlotC2SPacket clickSlot
-                && clickSlot.syncId() == mc.player.playerScreenHandler.syncId) {
-            event.setCancelled();
-            pendingPackets.add(clickSlot);
+        if (event.getPacket() instanceof ClickSlotC2SPacket clickSlot) {
+            if (clickSlot.syncId() != mc.player.playerScreenHandler.syncId) {
+                return;
+            }
+            if (shouldCacheInventoryPackets()) {
+                event.setCancelled();
+                pendingPackets.add(clickSlot);
+            } else {
+                this.recordClick(clickSlot);
+            }
             return;
         }
 
         if (event.getPacket() instanceof CloseHandledScreenC2SPacket closeScreen
                 && closeScreen.getSyncId() == mc.player.playerScreenHandler.syncId) {
-            event.setCancelled();
-            pendingSyntheticClose = false;
-            pendingPackets.add(closeScreen);
+            if (shouldCacheInventoryPackets()) {
+                event.setCancelled();
+                pendingSyntheticClose = false;
+                pendingPackets.add(closeScreen);
+            } else if (!settings.isInstantEnabled()) {
+                this.actionScheduler.recordClose(AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER);
+            }
         }
     }
 
@@ -171,12 +187,12 @@ public final class InventoryManagerModule extends Module {
             return;
         }
 
-        if (wasSprinting || mc.player.isSprinting() || event.isSprinting()) {
+        if (!settings.isInstantEnabled() && (wasSprinting || mc.player.isSprinting() || event.isSprinting())) {
             sprintReleaseTicks = Math.max(sprintReleaseTicks, settings.getOpenDelayTicks() + 2);
             return;
         }
 
-        if (sprintReleaseTicks > 0) {
+        if (!settings.isInstantEnabled() && sprintReleaseTicks > 0) {
             sprintReleaseTicks--;
             return;
         }
@@ -185,11 +201,13 @@ public final class InventoryManagerModule extends Module {
     }
 
     public boolean canMove(final long delay) {
-        return stopwatch.hasTimeElapsed(InventoryUtility.withAcaQuickMoveDelay(delay));
+        return settings.isInstantEnabled()
+                || this.actionScheduler.canAct(AcaInventoryActionScheduler.Action.QUICK_MOVE);
     }
 
     private boolean canPickupMove(final long delay) {
-        return stopwatch.hasTimeElapsed(InventoryUtility.withAcaPickupDelay(delay));
+        return settings.isInstantEnabled()
+                || this.actionScheduler.canAct(AcaInventoryActionScheduler.Action.PICKUP);
     }
 
     private void runInventoryManager(final boolean autoArmorOnly, final long actionDelay) {
@@ -206,6 +224,7 @@ public final class InventoryManagerModule extends Module {
         }
 
         updateIdleState();
+        this.updateInventorySession();
 
         if (!validateSlotConfig()) {
             resetStateForBlockedContext();
@@ -214,41 +233,55 @@ public final class InventoryManagerModule extends Module {
         }
 
         if (!canManageInventory(moduleRepository)) {
+            this.managementSessionActive = false;
             this.performingAction = false;
             return;
         }
+        if (!this.managementSessionActive) {
+            if (!settings.isInstantEnabled()) {
+                this.actionScheduler.beginSession(AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER);
+            }
+            this.managementSessionActive = true;
+            this.performingAction = false;
+            if (!settings.isInstantEnabled()) {
+                return;
+            }
+        }
 
+        final int actionBudget = settings.isInstantEnabled() ? MAX_INSTANT_ACTIONS_PER_TICK : 1;
+        boolean acted = false;
+        for (int action = 0; action < actionBudget; action++) {
+            if (!tryNextAction(moduleRepository, playerHandler, autoArmorOnly, actionDelay)) {
+                break;
+            }
+            acted = true;
+        }
+        this.performingAction = acted;
+    }
+
+    private boolean tryNextAction(final ModuleRepository moduleRepository,
+                                  final PlayerScreenHandler playerHandler,
+                                  final boolean autoArmorOnly,
+                                  final long actionDelay) {
         if (isAutoArmorEnabled(moduleRepository) && tryAutoArmorAction(playerHandler, actionDelay)) {
-            this.performingAction = true;
-            return;
+            return true;
         }
-
         if (autoArmorOnly) {
-            this.performingAction = false;
-            return;
+            return false;
         }
-
         if (pendingOffhandPlace && tryCompletePendingOffhandPlace(playerHandler, actionDelay)) {
-            this.performingAction = true;
-            return;
+            return true;
         }
-
         if (tryOffhandAction(playerHandler, actionDelay)) {
-            this.performingAction = true;
-            return;
+            return true;
         }
-
         if (tryHotbarAction(playerHandler, actionDelay)) {
-            this.performingAction = true;
-            return;
+            return true;
         }
-
         if (tryOverflowAction(playerHandler)) {
-            this.performingAction = true;
-            return;
+            return true;
         }
-
-        this.performingAction = tryCleanupAction(playerHandler);
+        return tryCleanupAction(playerHandler);
     }
 
     private boolean canManageInventory(final ModuleRepository moduleRepository) {
@@ -289,14 +322,14 @@ public final class InventoryManagerModule extends Module {
                 resetStateForBlockedContext();
                 return false;
             }
-            if (inventoryOpenTicks < settings.getOpenDelayTicks()) {
+            if (!settings.isInstantEnabled() && inventoryOpenTicks < settings.getOpenDelayTicks()) {
                 return false;
             }
         } else {
             if (!inventoryScreenOpen && !inventoryMoveModule.isEnabled() && idleTicks <= 1) {
                 return false;
             }
-            if (inventoryScreenOpen && inventoryOpenTicks < settings.getOpenDelayTicks()) {
+            if (!settings.isInstantEnabled() && inventoryScreenOpen && inventoryOpenTicks < settings.getOpenDelayTicks()) {
                 return false;
             }
         }
@@ -322,13 +355,13 @@ public final class InventoryManagerModule extends Module {
     }
 
     private void resetStateForBlockedContext() {
-        this.pendingOffhandPlace = false;
         this.inventoryOpenTicks = 0;
         this.performingAction = false;
+        this.managementSessionActive = false;
     }
 
     private boolean shouldCacheInventoryPackets() {
-        if (mc.player == null || mc.getNetworkHandler() == null || settings.isInventoryOnlyEnabled()) {
+        if (settings.isInstantEnabled() || mc.player == null || mc.getNetworkHandler() == null || settings.isInventoryOnlyEnabled()) {
             return false;
         }
 
@@ -365,12 +398,41 @@ public final class InventoryManagerModule extends Module {
             return;
         }
 
-        final Packet<?> nextPacket = pendingPackets.peek();
-        final long releaseDelay = nextPacket instanceof ClickSlotC2SPacket
-                ? InventoryUtility.ACA_MULTIINTERACTION_PICKUP_DELAY_MS
-                : InventoryUtility.ACA_INVENTORY_CLOSE_DELAY_MS;
-        if (!bufferedPacketStopwatch.hasTimeElapsed(releaseDelay)) {
+        if (settings.isInstantEnabled()) {
+            releasingPendingPackets = true;
+            try {
+                Packet<?> packet;
+                while ((packet = pendingPackets.poll()) != null) {
+                    OutboundNetworkBlockage.sendPacketDirect(packet);
+                    if (packet instanceof CloseHandledScreenC2SPacket) {
+                        pendingSyntheticClose = false;
+                        justClosedInventory = true;
+                    }
+                }
+                if (pendingSyntheticClose) {
+                    OutboundNetworkBlockage.sendPacketDirect(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));
+                    pendingSyntheticClose = false;
+                    justClosedInventory = true;
+                }
+                sprintReleaseTicks = 0;
+            } finally {
+                releasingPendingPackets = false;
+            }
             return;
+        }
+
+        final Packet<?> nextPacket = pendingPackets.peek();
+        if (nextPacket instanceof ClickSlotC2SPacket clickSlot) {
+            final AcaInventoryActionScheduler.Action action = AcaInventoryActionScheduler.from(clickSlot.actionType());
+            if (action != null && (!this.actionScheduler.canAct(action)
+                    || !bufferedPacketStopwatch.hasTimeElapsed(AcaInventoryActionScheduler.minimumDelay(action)))) {
+                return;
+            }
+        } else {
+            this.actionScheduler.scheduleClose();
+            if (!this.actionScheduler.canClose()) {
+                return;
+            }
         }
 
         releasingPendingPackets = true;
@@ -378,23 +440,57 @@ public final class InventoryManagerModule extends Module {
             final Packet<?> packet = pendingPackets.poll();
             if (packet != null) {
                 OutboundNetworkBlockage.sendPacketDirect(packet);
+                if (packet instanceof ClickSlotC2SPacket clickSlot) {
+                    this.recordClick(clickSlot);
+                }
                 if (packet instanceof ClickSlotC2SPacket && pendingPackets.isEmpty()) {
                     pendingSyntheticClose = true;
                 } else if (packet instanceof CloseHandledScreenC2SPacket) {
                     pendingSyntheticClose = false;
                     justClosedInventory = true;
                     sprintReleaseTicks = 0;
+                    this.actionScheduler.recordClose(AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER);
                 }
             } else if (pendingSyntheticClose) {
                 OutboundNetworkBlockage.sendPacketDirect(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));
                 pendingSyntheticClose = false;
                 justClosedInventory = true;
                 sprintReleaseTicks = 0;
+                this.actionScheduler.recordClose(AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER);
             }
             bufferedPacketStopwatch.reset();
         } finally {
             releasingPendingPackets = false;
         }
+    }
+
+    private void updateInventorySession() {
+        final boolean inventoryScreenOpen = mc.currentScreen instanceof InventoryScreen;
+        if (inventoryScreenOpen && !this.wasInventoryScreenOpen) {
+            if (!settings.isInstantEnabled()) {
+                this.actionScheduler.beginSession(AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER);
+            }
+        }
+        this.wasInventoryScreenOpen = inventoryScreenOpen;
+    }
+
+    private void recordClick(final ClickSlotC2SPacket packet) {
+        if (settings.isInstantEnabled()) {
+            return;
+        }
+        final AcaInventoryActionScheduler.Action action = AcaInventoryActionScheduler.from(packet.actionType());
+        if (action == null) {
+            return;
+        }
+
+        final boolean drop = action == AcaInventoryActionScheduler.Action.THROW;
+        this.actionScheduler.record(
+                AcaInventoryActionScheduler.Owner.INVENTORY_MANAGER,
+                action,
+                packet.slot(),
+                drop ? settings.getDropDelayMinimum() : settings.getActionDelayMinimum(),
+                drop ? settings.getDropDelayMaximum() : settings.getActionDelayMaximum()
+        );
     }
 
     private boolean validateSlotConfig() {
@@ -451,37 +547,42 @@ public final class InventoryManagerModule extends Module {
 
     private boolean tryAutoArmorAction(final PlayerScreenHandler playerHandler, final long actionDelay) {
         for (EquipmentSlot equipmentSlot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-            final Slot bestArmorSlot = InventoryUtility.getBestArmorSlot(playerHandler, equipmentSlot);
+            final Slot bestArmorSlot = getBestArmorSlot(playerHandler, equipmentSlot);
             if (bestArmorSlot == null) {
                 continue;
             }
 
-            final double bestScore = InventoryUtility.getArmorValue(bestArmorSlot.getStack());
-            final double equippedScore = InventoryUtility.getArmorValue(mc.player.getEquippedStack(equipmentSlot));
+            final double bestScore = getArmorScore(bestArmorSlot.getStack(), equipmentSlot);
+            final double equippedScore = getArmorScore(mc.player.getEquippedStack(equipmentSlot), equipmentSlot);
             final int armorScreenSlot = InventoryUtility.getArmorScreenSlot(equipmentSlot);
 
-            if (bestArmorSlot.id != armorScreenSlot && bestScore > equippedScore && !mc.player.getEquippedStack(equipmentSlot).isEmpty()) {
+            if (bestArmorSlot.id != armorScreenSlot
+                    && bestScore > equippedScore
+                    && !mc.player.getEquippedStack(equipmentSlot).isEmpty()
+                    && this.hasEmptyInventorySlot()) {
                 if (!canMove(actionDelay)) {
                     return false;
                 }
 
-                InventoryUtility.drop(playerHandler, armorScreenSlot);
+                InventoryUtility.shiftClick(playerHandler, armorScreenSlot, 0);
                 stopwatch.reset();
                 return true;
             }
         }
 
         for (EquipmentSlot equipmentSlot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-            final Slot bestArmorSlot = InventoryUtility.getBestArmorSlot(playerHandler, equipmentSlot);
+            final Slot bestArmorSlot = getBestArmorSlot(playerHandler, equipmentSlot);
             if (bestArmorSlot == null) {
                 continue;
             }
 
-            final double bestScore = InventoryUtility.getArmorValue(bestArmorSlot.getStack());
-            final double equippedScore = InventoryUtility.getArmorValue(mc.player.getEquippedStack(equipmentSlot));
+            final double bestScore = getArmorScore(bestArmorSlot.getStack(), equipmentSlot);
+            final double equippedScore = getArmorScore(mc.player.getEquippedStack(equipmentSlot), equipmentSlot);
             final int armorScreenSlot = InventoryUtility.getArmorScreenSlot(equipmentSlot);
 
-            if (bestArmorSlot.id != armorScreenSlot && bestScore > equippedScore) {
+            if (bestArmorSlot.id != armorScreenSlot
+                    && bestScore > equippedScore
+                    && mc.player.getEquippedStack(equipmentSlot).isEmpty()) {
                 if (!canMove(actionDelay)) {
                     return false;
                 }
@@ -492,6 +593,27 @@ public final class InventoryManagerModule extends Module {
             }
         }
 
+        return false;
+    }
+
+    private Slot getBestArmorSlot(final PlayerScreenHandler playerHandler, final EquipmentSlot equipmentSlot) {
+        return settings.isMinibloxMode()
+                ? MinibloxArmorUtility.getBestArmorSlot(playerHandler, equipmentSlot)
+                : InventoryUtility.getBestArmorSlot(playerHandler, equipmentSlot);
+    }
+
+    private double getArmorScore(final ItemStack stack, final EquipmentSlot equipmentSlot) {
+        return settings.isMinibloxMode()
+                ? MinibloxArmorUtility.getTier(stack, equipmentSlot)
+                : InventoryUtility.getArmorValue(stack);
+    }
+
+    private boolean hasEmptyInventorySlot() {
+        for (int slot = 0; slot < InventoryUtility.MAIN_INVENTORY_SIZE; slot++) {
+            if (mc.player.getInventory().getStack(slot).isEmpty()) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -872,6 +994,14 @@ public final class InventoryManagerModule extends Module {
             return false;
         }
 
+        if (settings.isMinibloxMode()) {
+            final MinibloxArmorUtility.ArmorInfo armor = MinibloxArmorUtility.identify(stack);
+            if (armor != null) {
+                final Slot bestArmorSlot = MinibloxArmorUtility.getBestArmorSlot(playerHandler, armor.slot());
+                return bestArmorSlot != null && bestArmorSlot.getStack() == stack;
+            }
+        }
+
         if (InventoryUtility.hasCustomName(stack) || InventoryUtility.isServerMenuItem(stack)) {
             return true;
         }
@@ -887,14 +1017,14 @@ public final class InventoryManagerModule extends Module {
         }
 
         if (InventoryUtility.isArmor(stack)) {
-            final EquippableComponent equippable = stack.get(DataComponentTypes.EQUIPPABLE);
-            if (equippable == null) {
+            final EquipmentSlot equipmentSlot = InventoryUtility.getArmorEquipmentSlot(stack);
+            if (equipmentSlot == null) {
                 return false;
             }
 
             final double score = InventoryUtility.getArmorValue(stack);
-            final double equippedScore = InventoryUtility.getArmorValue(mc.player.getEquippedStack(equippable.slot()));
-            final Slot bestArmorSlot = InventoryUtility.getBestArmorSlot(playerHandler, equippable.slot());
+            final double equippedScore = InventoryUtility.getArmorValue(mc.player.getEquippedStack(equipmentSlot));
+            final Slot bestArmorSlot = InventoryUtility.getBestArmorSlot(playerHandler, equipmentSlot);
             final double bestScore = bestArmorSlot != null ? InventoryUtility.getArmorValue(bestArmorSlot.getStack()) : 0.0;
 
             if (equippedScore >= score) {

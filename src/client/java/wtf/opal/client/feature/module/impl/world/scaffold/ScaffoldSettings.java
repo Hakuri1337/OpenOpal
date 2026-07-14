@@ -11,6 +11,7 @@ import wtf.opal.client.feature.module.impl.world.scaffold.mode.AntiGamingChairSc
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.BloxdScaffold;
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.HeypixelScaffold;
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.HypixelScaffold;
+import wtf.opal.client.feature.module.impl.world.scaffold.mode.silencetelly.SilenceTellyScaffold;
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.TellyScaffold;
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.VanillaScaffold;
 import wtf.opal.client.feature.module.impl.world.scaffold.mode.watchdog.WatchdogScaffold;
@@ -57,6 +58,23 @@ public final class ScaffoldSettings {
 
     private final MultipleBooleanProperty hypixelAddons;
 
+    private final ModeProperty<SilenceTellyMode> silenceTellyMode;
+    private final BooleanProperty silenceTellyAlwaysUpdateRotation;
+    private final NumberProperty silenceTellyPlaceTick, silenceTellyRotationTick;
+    private final BooleanProperty silenceTellySpoofItem, silenceTellyNoSwing;
+    private final BooleanProperty silenceTellyEagle;
+    private final NumberProperty silenceTellyEagleTick, silenceTellyKeepEagleTick;
+    private final BooleanProperty silenceTellySnap, silenceTellyNoUptelly, silenceTellyGodBridge;
+    private final BooleanProperty silenceTellyHeypixelUpTelly, silenceTellySafeMode, silenceTellyTestOnGround;
+    private final BooleanProperty silenceTellyFixRotation, silenceTellySlowUpTelly;
+    private final BooleanProperty silenceTellyBlockFly, silenceTellyAbuseRotation;
+    private final ModeProperty<SilenceTellyBlockSlotMode> silenceTellyBlockSlotMode;
+    private final ModeProperty<SilenceTellyJumpMode> silenceTellyJumpMode;
+    private final NumberProperty silenceTellySafeDistance;
+    private final BooleanProperty silenceTellyDebug, silenceTellyKeepFov, silenceTellyMark;
+    private final NumberProperty silenceTellyFov;
+    private final BooleanProperty silenceTellyDuplicateRotPlace, silenceTellyInteractItemBeforePlace;
+
     public ScaffoldSettings(final ScaffoldModule module) {
         this.movementIntelligence = new BooleanProperty("Enabled", false);
         this.diagonalMovement = new BooleanProperty("Diagonal movement", false);
@@ -98,11 +116,47 @@ public final class ScaffoldSettings {
         this.hypixelAddons = new MultipleBooleanProperty("Hypixel addons",
                 new BooleanProperty("Boost", true)).hideIf(() -> !(LocalDataWatch.get().getKnownServerManager().getCurrentServer() instanceof HypixelServer));
 
-        module.addModuleModes(mode, new VanillaScaffold(module), new WatchdogScaffold(module), new AntiGamingChairScaffold(module), new BloxdScaffold(module), new TellyScaffold(module), new HeypixelScaffold(module), new HypixelScaffold(module));
+        this.silenceTellyMode = new ModeProperty<>("SilenceTelly Mode", SilenceTellyMode.TELLY).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyAlwaysUpdateRotation = new BooleanProperty("ST Always Update Rotation", false).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyPlaceTick = new NumberProperty("ST PlaceTick", 1.0F, 1.0F, 5.0F, 1.0F).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellyRotationTick = new NumberProperty("ST RotationTick", 1.0F, 1.0F, 5.0F, 1.0F).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellySpoofItem = new BooleanProperty("ST Spoof Item", true).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyNoSwing = new BooleanProperty("ST No Swing", false).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyEagle = new BooleanProperty("ST Eagle", false).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellyEagleTick = new NumberProperty("ST EagleTick", 1.0F, 1.0F, 5.0F, 1.0F).hideIf(() -> !this.isSilenceTellyMode() || !this.silenceTellyEagle.getValue());
+        this.silenceTellyKeepEagleTick = new NumberProperty("ST KeepEagleTick", 1.0F, 1.0F, 5.0F, 1.0F).hideIf(() -> !this.isSilenceTellyMode() || !this.silenceTellyEagle.getValue());
+        this.silenceTellySnap = new BooleanProperty("ST Snap", false).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellyNoUptelly = new BooleanProperty("ST No Uptelly", true).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellyGodBridge = new BooleanProperty("ST GodBridge", false).hideIf(() -> !this.isSilenceTellyMode() || this.silenceTellyMode.getValue() != SilenceTellyMode.NORMAL);
+        this.silenceTellyHeypixelUpTelly = new BooleanProperty("ST Heypixel UpTelly", true).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellySafeMode = new BooleanProperty("ST Safe Mode", false).hideIf(() -> !this.isSilenceTellyTellyMode() || !this.silenceTellyHeypixelUpTelly.getValue());
+        this.silenceTellyTestOnGround = new BooleanProperty("ST Test OnGround", false).hideIf(() -> !this.isSilenceTellyTellyMode() || !this.silenceTellySafeMode.getValue());
+        this.silenceTellyFixRotation = new BooleanProperty("ST Fix Rotation", true).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellySlowUpTelly = new BooleanProperty("ST SlowUpTelly", false).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellyBlockFly = new BooleanProperty("ST Block Fly", false).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyAbuseRotation = new BooleanProperty("ST Abuse Rotation", false).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyBlockSlotMode = new ModeProperty<>("ST Block Slot Mode", SilenceTellyBlockSlotMode.FARTHEST).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyJumpMode = new ModeProperty<>("ST Jump Mode", SilenceTellyJumpMode.NORMAL).hideIf(() -> !this.isSilenceTellyTellyMode());
+        this.silenceTellySafeDistance = new NumberProperty("ST Clutch Safe Distance", 4.5F, 1.0F, 5.0F, 0.25F).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyDebug = new BooleanProperty("ST Debug", false).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyKeepFov = new BooleanProperty("ST Keep FOV", true).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyFov = new NumberProperty("ST FOV", 1.1F, 1.0F, 2.1F, 0.05F).hideIf(() -> !this.isSilenceTellyMode() || !this.silenceTellyKeepFov.getValue());
+        this.silenceTellyMark = new BooleanProperty("ST Mark", true).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyDuplicateRotPlace = new BooleanProperty("ST DuplicateRotPlace", true).hideIf(() -> !this.isSilenceTellyMode());
+        this.silenceTellyInteractItemBeforePlace = new BooleanProperty("ST Interact Item Before Place", false).hideIf(() -> !this.isSilenceTellyMode());
+
+        module.addModuleModes(mode, new VanillaScaffold(module), new WatchdogScaffold(module), new AntiGamingChairScaffold(module), new BloxdScaffold(module), new TellyScaffold(module), new HeypixelScaffold(module), new HypixelScaffold(module), new SilenceTellyScaffold(module));
         module.addProperties(rotationProperty.get(), mode, switchMode, swingMode, tower, snapRotations, overrideRaycast,
                 interactBeforePlace, sameY, autoJump, tellyHeypixel, keepFov, duplicateRotPlace, blockOverlay,
                 uitemsTelly, upTellyBypass, snap, selfRescueMode, rotateSpeed, rotateBackSpeed, tellyTick, safeWalk,
-                hypixelAddons);
+                hypixelAddons, silenceTellyMode, silenceTellyAlwaysUpdateRotation, silenceTellyPlaceTick,
+                silenceTellyRotationTick, silenceTellySpoofItem, silenceTellyNoSwing, silenceTellyEagle,
+                silenceTellyEagleTick, silenceTellyKeepEagleTick, silenceTellySnap, silenceTellyNoUptelly,
+                silenceTellyGodBridge, silenceTellyHeypixelUpTelly, silenceTellySafeMode, silenceTellyTestOnGround,
+                silenceTellyFixRotation, silenceTellySlowUpTelly, silenceTellyBlockFly, silenceTellyAbuseRotation,
+                silenceTellyBlockSlotMode, silenceTellyJumpMode, silenceTellySafeDistance, silenceTellyDebug,
+                silenceTellyKeepFov, silenceTellyFov, silenceTellyMark, silenceTellyDuplicateRotPlace,
+                silenceTellyInteractItemBeforePlace);
     }
 
     private boolean isTellyMode() {
@@ -115,6 +169,14 @@ public final class ScaffoldSettings {
 
     private boolean isUitemsScaffoldMode() {
         return this.mode.getValue() == Mode.HEYPIXEL || this.mode.getValue() == Mode.HYPIXEL;
+    }
+
+    private boolean isSilenceTellyMode() {
+        return this.mode.getValue() == Mode.SILENCE_TELLY;
+    }
+
+    private boolean isSilenceTellyTellyMode() {
+        return this.isSilenceTellyMode() && this.silenceTellyMode.getValue() == SilenceTellyMode.TELLY;
     }
 
     public boolean isKeepFov() {
@@ -217,6 +279,118 @@ public final class ScaffoldSettings {
         return interactBeforePlace.getValue();
     }
 
+    public SilenceTellyMode getSilenceTellyMode() {
+        return silenceTellyMode.getValue();
+    }
+
+    public boolean isSilenceTellyAlwaysUpdateRotation() {
+        return silenceTellyAlwaysUpdateRotation.getValue();
+    }
+
+    public int getSilenceTellyPlaceTick() {
+        return silenceTellyPlaceTick.getValue().intValue();
+    }
+
+    public int getSilenceTellyRotationTick() {
+        return silenceTellyRotationTick.getValue().intValue();
+    }
+
+    public boolean isSilenceTellySpoofItem() {
+        return silenceTellySpoofItem.getValue();
+    }
+
+    public boolean isSilenceTellyNoSwing() {
+        return silenceTellyNoSwing.getValue();
+    }
+
+    public boolean isSilenceTellyEagle() {
+        return silenceTellyEagle.getValue();
+    }
+
+    public int getSilenceTellyEagleTick() {
+        return silenceTellyEagleTick.getValue().intValue();
+    }
+
+    public int getSilenceTellyKeepEagleTick() {
+        return silenceTellyKeepEagleTick.getValue().intValue();
+    }
+
+    public boolean isSilenceTellySnap() {
+        return silenceTellySnap.getValue();
+    }
+
+    public boolean isSilenceTellyNoUptelly() {
+        return silenceTellyNoUptelly.getValue();
+    }
+
+    public boolean isSilenceTellyGodBridge() {
+        return silenceTellyGodBridge.getValue();
+    }
+
+    public boolean isSilenceTellyHeypixelUpTelly() {
+        return silenceTellyHeypixelUpTelly.getValue();
+    }
+
+    public boolean isSilenceTellySafeMode() {
+        return silenceTellySafeMode.getValue();
+    }
+
+    public boolean isSilenceTellyTestOnGround() {
+        return silenceTellyTestOnGround.getValue();
+    }
+
+    public boolean isSilenceTellyFixRotation() {
+        return silenceTellyFixRotation.getValue();
+    }
+
+    public boolean isSilenceTellySlowUpTelly() {
+        return silenceTellySlowUpTelly.getValue();
+    }
+
+    public boolean isSilenceTellyBlockFly() {
+        return silenceTellyBlockFly.getValue();
+    }
+
+    public boolean isSilenceTellyAbuseRotation() {
+        return silenceTellyAbuseRotation.getValue();
+    }
+
+    public SilenceTellyBlockSlotMode getSilenceTellyBlockSlotMode() {
+        return silenceTellyBlockSlotMode.getValue();
+    }
+
+    public SilenceTellyJumpMode getSilenceTellyJumpMode() {
+        return silenceTellyJumpMode.getValue();
+    }
+
+    public double getSilenceTellySafeDistance() {
+        return silenceTellySafeDistance.getValue().doubleValue();
+    }
+
+    public boolean isSilenceTellyDebug() {
+        return silenceTellyDebug.getValue();
+    }
+
+    public boolean isSilenceTellyKeepFov() {
+        return silenceTellyKeepFov.getValue();
+    }
+
+    public float getSilenceTellyFov() {
+        return silenceTellyFov.getValue().floatValue();
+    }
+
+    public boolean isSilenceTellyMark() {
+        return silenceTellyMark.getValue();
+    }
+
+    public boolean isSilenceTellyDuplicateRotPlace() {
+        return silenceTellyDuplicateRotPlace.getValue();
+    }
+
+    public boolean isSilenceTellyInteractItemBeforePlace() {
+        return silenceTellyInteractItemBeforePlace.getValue();
+    }
+
     public MultipleBooleanProperty getHypixelAddons() {
         return hypixelAddons;
     }
@@ -269,7 +443,8 @@ public final class ScaffoldSettings {
         BLOXD("Bloxd"),
         TELLY("Telly"),
         HEYPIXEL("Heypixel"),
-        HYPIXEL("Hypixel");
+        HYPIXEL("Hypixel"),
+        SILENCE_TELLY("SilenceTelly");
 
         private final String name;
 
@@ -290,6 +465,56 @@ public final class ScaffoldSettings {
         private final String name;
 
         SelfRescueMode(final String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
+        }
+    }
+
+    public enum SilenceTellyMode {
+        TELLY("Telly"),
+        SNAP("Snap"),
+        NORMAL("Normal");
+
+        private final String name;
+
+        SilenceTellyMode(final String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
+        }
+    }
+
+    public enum SilenceTellyBlockSlotMode {
+        FARTHEST("Farthest"),
+        MOST_BLOCKS("Most Blocks");
+
+        private final String name;
+
+        SilenceTellyBlockSlotMode(final String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
+        }
+    }
+
+    public enum SilenceTellyJumpMode {
+        PARKOUR("Parkour"),
+        NORMAL("Normal"),
+        NONE("None");
+
+        private final String name;
+
+        SilenceTellyJumpMode(final String name) {
             this.name = name;
         }
 

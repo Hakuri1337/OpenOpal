@@ -134,6 +134,14 @@ public final class TargetStrafeModule extends Module {
         this.lastSwitchTime = now;
     }
 
+    public boolean isActivelyStrafing() {
+        return this.isEnabled()
+                && this.strafeTarget != null
+                && this.strafeTarget.isAlive()
+                && this.isMovementStateSafe()
+                && (!this.smartStrafe.getValue() || mc.options.jumpKey.isPressed());
+    }
+
     private boolean isMovementStateSafe() {
         final LocalDataWatch dataWatch = LocalDataWatch.get();
         return mc.currentScreen == null

@@ -33,6 +33,7 @@ import wtf.opal.client.feature.module.impl.movement.physics.PhysicsModule;
 import wtf.opal.client.feature.module.impl.movement.speed.SpeedModule;
 import wtf.opal.client.feature.module.impl.utility.*;
 import wtf.opal.client.feature.module.impl.utility.disabler.DisablerModule;
+import wtf.opal.client.feature.module.impl.utility.disabler.impl.MinibloxDisabler;
 import wtf.opal.client.feature.module.impl.utility.inventory.AutoArmorModule;
 import wtf.opal.client.feature.module.impl.utility.inventory.ChestStealerModule;
 import wtf.opal.client.feature.module.impl.utility.inventory.manager.InventoryManagerModule;
@@ -41,11 +42,14 @@ import wtf.opal.client.feature.module.impl.visual.*;
 import wtf.opal.client.feature.module.impl.visual.esp.ESPModule;
 import wtf.opal.client.feature.module.impl.visual.overlay.OverlayModule;
 import wtf.opal.client.feature.module.impl.world.FastBreakModule;
+import wtf.opal.client.feature.module.impl.world.SilenceTellyModule;
 import wtf.opal.client.feature.module.impl.world.TimerModule;
 import wtf.opal.client.feature.module.impl.world.breaker.BreakerModule;
 import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldModule;
 import wtf.opal.client.feature.module.repository.ModuleRepository;
 import wtf.opal.client.notification.NotificationManager;
+import wtf.opal.client.music.MusicPlayerModule;
+import wtf.opal.client.music.MusicService;
 import wtf.opal.event.EventDispatcher;
 import wtf.opal.event.impl.client.PostClientInitializationEvent;
 
@@ -62,7 +66,7 @@ public final class OpalClient {
     private CommandRepository commandRepository;
     private ModuleRepository moduleRepository;
     private ScriptRepository scriptRepository;
-    private String user = "BetaUser";
+    private MusicService musicService;
 
     private boolean postInitialization;
 
@@ -74,6 +78,10 @@ public final class OpalClient {
     public void runPostInitializations() {
         this.runHelperInitializations();
 //        this.registerFabricEvents();
+
+        if (this.musicService == null) {
+            this.musicService = new MusicService();
+        }
 
         if (this.moduleRepository == null) {
             this.moduleRepository = ModuleRepository.fromModules(
@@ -104,12 +112,14 @@ public final class OpalClient {
                     new AttackEffectsModule(),
                     new TabGUIModule(),
                     new StreamerModeModule(),
+                    new TitleChangerModule(),
 //                    new DiscordRPCModule(),
                     new NoHurtCameraModule(),
                     new NoFOVModule(),
                     new PostProcessingModule(),
                     // World
                     new ScaffoldModule(),
+                    new SilenceTellyModule(),
                     new TimerModule(),
                     new BreakerModule(),
                     new FastBreakModule(),
@@ -135,6 +145,7 @@ public final class OpalClient {
                     new StuckModule(),
                     // Utility
                     new FastUseModule(),
+                    new MusicPlayerModule(),
                     new NoFallModule(),
                     new AutoBucketModule(),
                     new ChestStealerModule(),
@@ -185,6 +196,7 @@ public final class OpalClient {
         EventDispatcher.dispatch(new PostClientInitializationEvent());
 
         PayloadTypeRegistry.playS2C().register(PhysicsModule.ResyncPhysicsPayload.ID, PhysicsModule.ResyncPhysicsPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(MinibloxDisabler.MovePayload.ID, MinibloxDisabler.MovePayload.CODEC);
     }
 
     
@@ -211,6 +223,11 @@ public final class OpalClient {
     
     private void onShutdown() {
         this.moduleRepository.getModule(ClickGUIModule.class).setEnabled(false);
+        this.moduleRepository.getModule(MusicPlayerModule.class).setEnabled(false);
+
+        if (this.musicService != null) {
+            this.musicService.close();
+        }
 
         SaveUtility.saveConfig("default");
         SaveUtility.saveBindings();
@@ -237,12 +254,8 @@ public final class OpalClient {
         return scriptRepository;
     }
 
-    public String getUser() {
-        return user;
-    }
-
-    public void setUser(final String user) {
-        this.user = user;
+    public MusicService getMusicService() {
+        return musicService;
     }
 
     private static OpalClient instance;

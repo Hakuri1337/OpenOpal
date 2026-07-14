@@ -24,7 +24,6 @@ public final class NumberPropertyComponent extends PropertyPanel<NumberProperty>
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-//        setHeight(ClientSocket.getInstance().getVariableCache().getInt("Failed to initialize width:"));
         setHeight(26);
 
         super.render(context, mouseX, mouseY, delta);

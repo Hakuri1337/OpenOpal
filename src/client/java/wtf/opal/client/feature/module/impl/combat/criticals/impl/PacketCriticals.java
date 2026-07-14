@@ -13,9 +13,7 @@ import wtf.opal.utility.player.PlayerUtility;
 
 import static wtf.opal.client.Constants.mc;
 
-public final class
-
-PacketCriticals extends ModuleMode<CriticalsModule> {
+public final class PacketCriticals extends ModuleMode<CriticalsModule> {
     public PacketCriticals(CriticalsModule module) {
         super(module);
     }
@@ -24,25 +22,13 @@ PacketCriticals extends ModuleMode<CriticalsModule> {
 
     @Subscribe
     public void onAttack(AttackEvent event) {
-        if (mc.player == null) {
-            return;
-        }
-
-        if (event.getTarget() instanceof LivingEntity target) {
-            if (!PlayerUtility.isCriticalHitAvailable()) {
-                this.module.debugDamage("Packet", target, false, "critical state unavailable"
-                        + ", onGround=" + mc.player.isOnGround()
-                        + ", fall=" + format(mc.player.fallDistance));
-                return;
-            }
-            if (this.groundOnly.getValue() && !mc.player.isOnGround()) {
-                this.module.debugDamage("Packet", target, false, "ground-only blocked");
+        if (event.getTarget() instanceof LivingEntity) {
+            if (!PlayerUtility.isCriticalHitAvailable() || (this.groundOnly.getValue() && !mc.player.isOnGround())) {
                 return;
             }
 
             final Box box = mc.player.getBoundingBox().offset(0.0D, 0.0625D, 0.0D);
             if (!PlayerUtility.isBoxEmpty(box)) {
-                this.module.debugDamage("Packet", target, false, "headroom blocked");
                 return;
             }
 
@@ -60,12 +46,7 @@ PacketCriticals extends ModuleMode<CriticalsModule> {
 
             mc.player.setPosition(pos);
             mc.player.setOnGround(ground);
-            this.module.debugDamage("Packet", target, true, "sent offsets=0.0625,0.00125 ground=" + ground);
         }
-    }
-
-    private static String format(final double value) {
-        return String.format(java.util.Locale.ROOT, "%.2f", value);
     }
 
     @Override

@@ -48,3 +48,9 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# generated promotional output and machine-local launchers
+
+__pycache__/
+promotional/**/*.mp4
+/*OpalLegacy.bat

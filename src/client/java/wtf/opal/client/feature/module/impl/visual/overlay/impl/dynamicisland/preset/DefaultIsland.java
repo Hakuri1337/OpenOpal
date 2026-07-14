@@ -32,7 +32,7 @@ public class DefaultIsland implements IslandTrigger {
 
         final String openOpalText = "OpenOpal";
         final String releaseType = ReleaseInfo.CHANNEL.toString();
-        final String releaseVersion = "v" + ReleaseInfo.VERSION;
+        final String releaseVersion = ReleaseInfo.VERSION;
 
         String serverAddress = "singleplayer";
         String serverPing = "0 ms";
@@ -81,14 +81,6 @@ public class DefaultIsland implements IslandTrigger {
 
         final boolean grayscale = theme != ClientTheme.OPAL;
         final NVGImageRenderer iconRenderer = this.getAppropriateImage(mc.getWindow().getScaleFactor(), grayscale);
-
-//        final String[] variable = ClientSocket.getInstance().getVariableCache().getString("Release Version").split("_");
-//        if (grayscale) {
-//            final int interpolatedColor = ColorUtility.interpolateColorsBackAndForth(Integer.parseInt(variable[4]), 1, colors.second, colors.first);
-//            iconRenderer.drawImage(posX + Integer.parseInt(variable[1]), posY + Integer.parseInt(variable[0]), 16, 16, ColorUtility.brighter(interpolatedColor, 0.2F));
-//        } else {
-//            iconRenderer.drawImage(posX + Integer.parseInt(variable[1]), posY + Integer.parseInt(variable[0]), ClientSocket.getInstance().getVariableCache().getInt("PostGres Error"), 16);
-//        }
 
         final int xOffset = 10;
         final int yOffset = 5;

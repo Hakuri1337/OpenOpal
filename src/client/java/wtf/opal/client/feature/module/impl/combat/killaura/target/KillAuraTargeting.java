@@ -1,7 +1,9 @@
 package wtf.opal.client.feature.module.impl.combat.killaura.target;
 
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import wtf.opal.client.feature.helper.impl.LocalDataWatch;
@@ -38,7 +40,7 @@ public final class KillAuraTargeting {
     }
 
     private void findAttackTarget() {
-        final double interactionRange = mc.player.getEntityInteractionRange();
+        final double interactionRange = this.settings.getRange();
         final List<TargetLivingEntity> targets = this.getTargets(interactionRange);
         if (targets == null || targets.isEmpty()) {
             this.target = null;
@@ -150,12 +152,23 @@ public final class KillAuraTargeting {
             final LivingEntity entity = target.getEntity();
             final Vec3d closestVector = PlayerUtility.getClosestVectorToBoundingBox(eyePos, entity);
             final RaytracedRotation tickedRotation = RotationUtility.getRotationFromRaycastedEntity(entity, closestVector, entityInteractionRange);
-            if (tickedRotation != null) {
+            if (tickedRotation != null && (this.settings.isThroughWalls() || this.hasLineOfSight(tickedRotation))) {
                 targetList.add(new CurrentTarget(this.getKillAuraTarget(target), tickedRotation));
             }
         }
 
         return targetList;
+    }
+
+    private boolean hasLineOfSight(final RaytracedRotation targetRotation) {
+        final HitResult blockHit = mc.world.raycast(new RaycastContext(
+                mc.player.getEyePos(),
+                targetRotation.hitResult().getPos(),
+                RaycastContext.ShapeType.COLLIDER,
+                RaycastContext.FluidHandling.NONE,
+                mc.player
+        ));
+        return blockHit.getType() == HitResult.Type.MISS;
     }
 
     private @NotNull KillAuraTarget getKillAuraTarget(final TargetLivingEntity target) {

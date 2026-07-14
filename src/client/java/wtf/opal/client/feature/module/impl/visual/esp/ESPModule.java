@@ -200,12 +200,6 @@ public final class ESPModule extends Module {
             int color = -1;
             String name = Formatting.WHITE + PlayerUtility.getFormattedEntityName(entity);
 
-//            final User user = ClientSocket.getInstance().getUserOrNull(entity.getUuid());
-//            if (user != null) {
-//                name += " " + Formatting.GRAY + "(" + Formatting.RESET + user.getName() + Formatting.GRAY + ")";
-//                color = user.getRole().getArgb();
-//            }
-
             elementList.add(new NameTagElement(name, color));
         }
 

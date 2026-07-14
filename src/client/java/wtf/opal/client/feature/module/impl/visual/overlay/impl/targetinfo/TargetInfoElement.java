@@ -90,17 +90,8 @@ public final class TargetInfoElement implements IOverlayElement {
         final float targetNameSize = 6;
         final float hpSize = 5;
 
-        String targetName = Formatting.WHITE + target.getFormattedName();
-        int targetNameColor;
-
-        final String user = OpalClient.getInstance().getUser();
-        if (user != null) {
-            targetName += " " + Formatting.GRAY + "(" + Formatting.RESET + user + Formatting.GRAY + ")";
-//            targetNameColor = user.getRole().getArgb();
-            targetNameColor = -1;
-        } else {
-            targetNameColor = -1;
-        }
+        final String targetName = Formatting.WHITE + target.getFormattedName();
+        final int targetNameColor = -1;
 
         final int skinTextureGlId = isBloom ? -1 : this.getSkinTextureGlId(target.entity);
 
@@ -132,7 +123,7 @@ public final class TargetInfoElement implements IOverlayElement {
         this.healthAnimation.run(trueHealthPercent);
 
 
-        String finalTargetName = targetName;
+        final String finalTargetName = targetName;
         NVGRenderer.scale(scale, x, y, 0, 0, () -> {
             NVGRenderer.globalAlpha(targetAnimationProgress);
 

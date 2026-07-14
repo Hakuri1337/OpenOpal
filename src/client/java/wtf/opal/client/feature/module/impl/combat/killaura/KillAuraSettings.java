@@ -19,13 +19,13 @@ public final class KillAuraSettings {
     private final TargetProperty targetProperty;
     private final CPSProperty cpsProperty, swingCpsProperty;
 
-    private final NumberProperty rotationRange, swingRange;
+    private final NumberProperty range, rotationRange, swingRange;
     private final BooleanProperty hideFakeSwings;
 
     private final BooleanProperty requireAttackKey, requireWeapon, hitSelect;
-    private final BooleanProperty overrideRaycast, tickLookahead;
+    private final BooleanProperty overrideRaycast, tickLookahead, throughWalls;
     private final BooleanProperty heypixelBypass;
-    private final BooleanProperty fakeAB;
+    private final ModeProperty<AutoblockMode> autoblockMode;
     private final BooleanProperty keepSprintFov;
     private final BooleanProperty grimKeepSprint;
     private final BooleanProperty smartWeapon;
@@ -40,6 +40,7 @@ public final class KillAuraSettings {
         this.cpsProperty = new CPSProperty(module, "Attack CPS", false);
         this.swingCpsProperty = new CPSProperty(module, "Swing CPS", false);
 
+        this.range = new NumberProperty("Range", 3.D, 3.D, 6.D, 0.1D);
         this.rotationRange = new NumberProperty("Rotation range", 5.D, 3.D, 8.D, 0.1D);
         this.swingRange = new NumberProperty("Swing range", 5.D, 3.D, 8.D, 0.1D);
         this.hideFakeSwings = new BooleanProperty("Hide fake swings", true);
@@ -49,8 +50,9 @@ public final class KillAuraSettings {
         this.hitSelect = new BooleanProperty("Hit Select", false);
         this.overrideRaycast = new BooleanProperty("Override raycast", true);
         this.tickLookahead = new BooleanProperty("Tick lookahead", false).hideIf(() -> !this.isOverrideRaycast());
+        this.throughWalls = new BooleanProperty("Through Walls", false);
         this.heypixelBypass = new BooleanProperty("Heypixel Bypass", false);
-        this.fakeAB = new BooleanProperty("FakeAB", false);
+        this.autoblockMode = new ModeProperty<>("Autoblock", AutoblockMode.OFF);
         this.keepSprintFov = new BooleanProperty("Keep Sprint FOV", false);
         this.grimKeepSprint = new BooleanProperty("Grim Keep Sprint", false);
         this.smartWeapon = new BooleanProperty("SmartWeapon", false);
@@ -65,9 +67,8 @@ public final class KillAuraSettings {
 
         module.addProperties(
                 rotationProperty.get(), new GroupProperty("Requirements", requireWeapon, requireAttackKey, hitSelect),
-                mode, rotationRange, swingRange, hideFakeSwings, targetProperty.get(),
-                fov, overrideRaycast, tickLookahead, heypixelBypass, fakeAB,
-                keepSprintFov, grimKeepSprint, smartWeapon, attackCooldown19, visuals
+                mode, range, rotationRange, swingRange, hideFakeSwings, targetProperty.get(),
+                fov, overrideRaycast, tickLookahead, throughWalls, heypixelBypass, autoblockMode, keepSprintFov, grimKeepSprint, smartWeapon, attackCooldown19, visuals
         );
     }
 
@@ -76,7 +77,15 @@ public final class KillAuraSettings {
     }
 
     public boolean isFakeAutoBlock() {
-        return fakeAB.getValue();
+        return autoblockMode.getValue() == AutoblockMode.FAKE;
+    }
+
+    public boolean isVanillaAutoBlock() {
+        return autoblockMode.getValue() == AutoblockMode.VANILLA;
+    }
+
+    public AutoblockMode getAutoblockMode() {
+        return autoblockMode.getValue();
     }
 
     public boolean isHeypixelBypass() {
@@ -85,6 +94,14 @@ public final class KillAuraSettings {
 
     public double getSwingRange() {
         return this.swingRange.getValue();
+    }
+
+    public double getRange() {
+        return this.range.getValue();
+    }
+
+    public boolean isThroughWalls() {
+        return this.throughWalls.getValue();
     }
 
     public boolean isHideFakeSwings() {
@@ -162,6 +179,23 @@ public final class KillAuraSettings {
         private final String name;
 
         Mode(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    public enum AutoblockMode {
+        OFF("Off"),
+        VANILLA("Vanilla"),
+        FAKE("Fake");
+
+        private final String name;
+
+        AutoblockMode(String name) {
             this.name = name;
         }
 
