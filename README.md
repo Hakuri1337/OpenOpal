@@ -18,7 +18,7 @@ The project currently builds with:
 Recent work includes updates around KillAura, FakeAB, AntiKB/Velocity handling,
 AutoBucket, ChestStealer, InventoryMove, FastWeb, AntiTNT, TargetStrafe,
 NoSlow NoC0F, Scaffold-related utilities, ClickGUI behavior, configuration
-loading, and Dynamic Island visual options.
+loading, and MainPage Visuals.
 
 ## Building
 
