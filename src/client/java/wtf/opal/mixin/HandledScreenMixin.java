@@ -10,6 +10,7 @@ import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.screen.slot.SlotActionType;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -18,6 +19,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import wtf.opal.client.OpalClient;
 import wtf.opal.client.feature.module.impl.utility.inventory.ChestStealerModule;
+import wtf.opal.event.EventDispatcher;
+import wtf.opal.event.impl.game.inventory.ManualInventoryInteractionEvent;
 
 import java.awt.*;
 import java.util.Map;
@@ -28,6 +31,15 @@ import static wtf.opal.client.Constants.mc;
 public abstract class HandledScreenMixin<T extends ScreenHandler> {
 
     @Shadow @Final protected T handler;
+
+    @Inject(
+            method = "onMouseClick(Lnet/minecraft/screen/slot/Slot;IILnet/minecraft/screen/slot/SlotActionType;)V",
+            at = @At("HEAD")
+    )
+    private void hookManualInventoryInteraction(final Slot slot, final int slotId, final int button,
+                                                final SlotActionType actionType, final CallbackInfo ci) {
+        EventDispatcher.dispatch(new ManualInventoryInteractionEvent(this.handler.syncId, slotId, actionType));
+    }
 
     @Inject(
             method = "drawSlot",

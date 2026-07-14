@@ -1,154 +1,213 @@
 package wtf.opal.client.feature.module.impl.utility.inventory;
 
-import net.minecraft.screen.slot.SlotActionType;
-
+import java.util.EnumMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Shared timing gate for automated inventory actions. Delays are sampled once
- * after an action so repeated tick checks cannot move the deadline around.
+ * Serializes automated inventory work shared by ChestStealer and InventoryManager.
+ * ACA timing is intentionally fixed so configuration cannot create an unsafe packet rate.
  */
 public final class AcaInventoryActionScheduler {
+    public static final int OPEN_DELAY_TICKS = 2;
+    public static final int CLOSE_DELAY_TICKS = 2;
+    public static final int MANUAL_PAUSE_TICKS = 2;
+    public static final long ACTION_DELAY_MIN_MS = 125L;
+    public static final long ACTION_DELAY_MAX_MS = 130L;
+
+    public enum TimingMode {
+        INSTANT("Instant"),
+        ACA("ACA");
+
+        private final String name;
+
+        TimingMode(final String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
+        }
+    }
+
     public enum Owner {
         CHEST_STEALER,
         INVENTORY_MANAGER
     }
 
     public enum Action {
-        // ACA evaluates Bukkit inventory events on the server tick. The extra
-        // tick of headroom prevents two correctly spaced client packets from
-        // being compressed below the check's wall-clock threshold.
-        QUICK_MOVE(225L),
-        PICKUP(375L),
-        SWAP(175L),
-        THROW(105L);
-
-        private final long acaFloorMs;
-
-        Action(final long acaFloorMs) {
-            this.acaFloorMs = acaFloorMs;
-        }
+        QUICK_MOVE,
+        SWAP,
+        THROW
     }
 
     private static final AcaInventoryActionScheduler INSTANCE = new AcaInventoryActionScheduler();
 
-    private long nextActionAt;
-    private long closeAt;
-    private long lastActionAt;
-    private int lastRawSlot = -1;
-    private Owner owner;
+    private final EnumMap<Owner, Session> sessions = new EnumMap<>(Owner.class);
+    private long nextActionAtMs;
+    private int lastActionTick = Integer.MIN_VALUE;
+    private Owner lastActionOwner;
+    private boolean actionInProgress;
 
     private AcaInventoryActionScheduler() {
+        for (final Owner owner : Owner.values()) {
+            this.sessions.put(owner, new Session());
+        }
     }
 
     public static AcaInventoryActionScheduler getInstance() {
         return INSTANCE;
     }
 
-    public synchronized void beginSession(final Owner owner) {
-        final long now = System.currentTimeMillis();
-        this.owner = owner;
-        this.nextActionAt = Math.max(this.nextActionAt, now + humanDelay(180L, 360L, false));
-        this.closeAt = 0L;
-        this.lastRawSlot = -1;
+    public synchronized void beginSession(final Owner owner, final TimingMode mode, final int currentTick) {
+        final Session session = this.sessions.get(owner);
+        if (session.active && session.mode == mode) {
+            return;
+        }
+
+        final int manualPauseUntilTick = session.manualPauseUntilTick;
+        session.active = true;
+        session.mode = mode;
+        session.openReadyTick = mode == TimingMode.ACA ? currentTick + OPEN_DELAY_TICKS : currentTick;
+        session.manualPauseUntilTick = manualPauseUntilTick;
+        session.closeReadyTick = -1;
+        session.lastRawSlot = -1;
     }
 
-    public synchronized boolean canAct(final Action action) {
-        if (action == null) {
+    public synchronized void endSession(final Owner owner) {
+        this.sessions.get(owner).reset();
+    }
+
+    public synchronized boolean canAct(final Owner owner, final TimingMode mode, final int currentTick,
+                                       final Action action, final boolean fastThrow) {
+        final Session session = this.sessions.get(owner);
+        if (this.actionInProgress || !session.active || session.mode != mode || currentTick < session.manualPauseUntilTick) {
             return false;
         }
-        final long now = System.currentTimeMillis();
-        return now >= this.nextActionAt
-                && (this.lastActionAt == 0L || now - this.lastActionAt >= action.acaFloorMs);
-    }
+        if (mode == TimingMode.ACA && currentTick < session.openReadyTick) {
+            return false;
+        }
 
-    public synchronized void record(final Owner owner, final Action action, final int rawSlot,
-                                    final long preferredMin, final long preferredMax) {
-        if (action == null) {
-            return;
+        if (action == Action.THROW && fastThrow) {
+            return true;
+        }
+        if (mode == TimingMode.INSTANT) {
+            return true;
         }
 
         final long now = System.currentTimeMillis();
-        this.owner = owner;
-        final long minimum = Math.max(action.acaFloorMs, Math.max(0L, preferredMin));
-        final long maximum = Math.max(minimum + 110L, Math.max(minimum, preferredMax));
-        this.lastActionAt = now;
-        this.lastRawSlot = rawSlot;
-        this.nextActionAt = now + humanDelay(minimum, maximum, true);
-        this.closeAt = 0L;
+        return now >= this.nextActionAtMs && this.lastActionTick != currentTick;
     }
 
-    public synchronized void scheduleClose() {
-        if (this.closeAt != 0L) {
+    public synchronized boolean executeAction(final Owner owner, final TimingMode mode, final int currentTick,
+                                              final Action action, final int rawSlot, final boolean fastThrow,
+                                              final Runnable operation) {
+        if (operation == null || !this.canAct(owner, mode, currentTick, action, fastThrow)) {
+            return false;
+        }
+
+        this.actionInProgress = true;
+        try {
+            operation.run();
+            this.recordAction(owner, mode, currentTick, action, rawSlot, fastThrow);
+            return true;
+        } finally {
+            this.actionInProgress = false;
+        }
+    }
+
+    private void recordAction(final Owner owner, final TimingMode mode, final int currentTick,
+                              final Action action, final int rawSlot, final boolean fastThrow) {
+        final Session session = this.sessions.get(owner);
+        session.lastRawSlot = rawSlot;
+        session.closeReadyTick = -1;
+
+        if (mode == TimingMode.ACA && !(action == Action.THROW && fastThrow)) {
+            this.nextActionAtMs = System.currentTimeMillis() + randomActionDelay();
+            this.lastActionTick = currentTick;
+            this.lastActionOwner = owner;
+        }
+    }
+
+    public synchronized void pauseForManualInput(final Owner owner, final int currentTick) {
+        final Session session = this.sessions.get(owner);
+        session.manualPauseUntilTick = Math.max(session.manualPauseUntilTick, currentTick + MANUAL_PAUSE_TICKS);
+        session.closeReadyTick = -1;
+        this.nextActionAtMs = Math.max(this.nextActionAtMs, System.currentTimeMillis() + ACTION_DELAY_MAX_MS);
+        this.lastActionTick = currentTick;
+        this.lastActionOwner = owner;
+    }
+
+    public synchronized void scheduleClose(final Owner owner, final TimingMode mode, final int currentTick) {
+        final Session session = this.sessions.get(owner);
+        if (!session.active || session.mode != mode || session.closeReadyTick >= 0) {
             return;
         }
-        final long now = System.currentTimeMillis();
-        this.closeAt = Math.max(this.nextActionAt, now + humanDelay(150L, 280L, false));
+        session.closeReadyTick = mode == TimingMode.ACA ? currentTick + CLOSE_DELAY_TICKS : currentTick;
     }
 
-    public synchronized boolean canClose() {
-        return this.closeAt != 0L && System.currentTimeMillis() >= this.closeAt;
+    public synchronized boolean canClose(final Owner owner, final TimingMode mode, final int currentTick) {
+        final Session session = this.sessions.get(owner);
+        if (this.actionInProgress || !session.active || session.mode != mode || session.closeReadyTick < 0
+                || currentTick < session.manualPauseUntilTick) {
+            return false;
+        }
+        if (currentTick < session.closeReadyTick) {
+            return false;
+        }
+        return mode == TimingMode.INSTANT || System.currentTimeMillis() >= this.nextActionAtMs;
     }
 
     public synchronized void recordClose(final Owner owner) {
-        final long now = System.currentTimeMillis();
-        this.owner = owner;
-        this.nextActionAt = Math.max(this.nextActionAt, now + humanDelay(90L, 160L, false));
-        this.closeAt = 0L;
-        this.lastRawSlot = -1;
+        this.sessions.get(owner).reset();
     }
 
-    public synchronized boolean isCoolingDown(final Owner owner) {
-        return this.owner == owner && System.currentTimeMillis() < this.nextActionAt;
-    }
-
-    public synchronized long remainingDelayMs() {
-        return Math.max(0L, this.nextActionAt - System.currentTimeMillis());
-    }
-
-    public synchronized int getLastRawSlot() {
-        return this.lastRawSlot;
-    }
-
-    public synchronized long getLastActionAt() {
-        return this.lastActionAt;
-    }
-
-    public static Action from(final SlotActionType actionType) {
-        if (actionType == null) {
-            return null;
+    public synchronized boolean isCoolingDown(final Owner owner, final TimingMode mode, final int currentTick) {
+        final Session session = this.sessions.get(owner);
+        if (!session.active || session.mode != mode) {
+            return false;
         }
-        return switch (actionType) {
-            case QUICK_MOVE -> Action.QUICK_MOVE;
-            case PICKUP, PICKUP_ALL, CLONE -> Action.PICKUP;
-            case SWAP -> Action.SWAP;
-            case THROW -> Action.THROW;
-            default -> null;
-        };
+        if (currentTick < session.manualPauseUntilTick || currentTick < session.openReadyTick) {
+            return true;
+        }
+        if (session.closeReadyTick >= 0 && currentTick < session.closeReadyTick) {
+            return true;
+        }
+        return mode == TimingMode.ACA
+                && this.lastActionOwner == owner
+                && System.currentTimeMillis() < this.nextActionAtMs;
     }
 
-    public static long minimumDelay(final Action action) {
-        return action == null ? 0L : action.acaFloorMs;
+    public synchronized int getLastRawSlot(final Owner owner) {
+        return this.sessions.get(owner).lastRawSlot;
     }
 
-    private static long randomBetween(final long minimum, final long maximum) {
-        if (maximum <= minimum) {
-            return minimum;
+    public synchronized long remainingDelayMs(final Owner owner, final TimingMode mode, final int currentTick) {
+        if (!this.isCoolingDown(owner, mode, currentTick)) {
+            return 0L;
         }
-        return ThreadLocalRandom.current().nextLong(minimum, maximum + 1L);
+        return Math.max(0L, this.nextActionAtMs - System.currentTimeMillis());
     }
 
-    private static long humanDelay(final long minimum, final long maximum, final boolean allowHesitation) {
-        if (maximum <= minimum) {
-            return minimum;
-        }
+    private static long randomActionDelay() {
+        return ThreadLocalRandom.current().nextLong(ACTION_DELAY_MIN_MS, ACTION_DELAY_MAX_MS + 1L);
+    }
 
-        final ThreadLocalRandom random = ThreadLocalRandom.current();
-        final double triangular = (random.nextDouble() + random.nextDouble()) * 0.5D;
-        long delay = minimum + Math.round((maximum - minimum) * triangular);
-        if (allowHesitation && random.nextInt(12) == 0) {
-            delay += randomBetween(90L, 260L);
+    private static final class Session {
+        private boolean active;
+        private TimingMode mode;
+        private int openReadyTick;
+        private int manualPauseUntilTick = Integer.MIN_VALUE;
+        private int closeReadyTick = -1;
+        private int lastRawSlot = -1;
+
+        private void reset() {
+            this.active = false;
+            this.mode = null;
+            this.openReadyTick = 0;
+            this.manualPauseUntilTick = Integer.MIN_VALUE;
+            this.closeReadyTick = -1;
+            this.lastRawSlot = -1;
         }
-        return delay;
     }
 }

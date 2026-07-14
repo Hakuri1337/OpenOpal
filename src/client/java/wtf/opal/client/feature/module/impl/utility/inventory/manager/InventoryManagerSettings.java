@@ -1,20 +1,20 @@
 package wtf.opal.client.feature.module.impl.utility.inventory.manager;
 
+import wtf.opal.client.feature.module.impl.utility.inventory.AcaInventoryActionScheduler;
 import wtf.opal.client.feature.module.property.impl.GroupProperty;
 import wtf.opal.client.feature.module.property.impl.bool.BooleanProperty;
 import wtf.opal.client.feature.module.property.impl.mode.ModeProperty;
-import wtf.opal.client.feature.module.property.impl.number.BoundedNumberProperty;
 import wtf.opal.client.feature.module.property.impl.number.NumberProperty;
 
 public final class InventoryManagerSettings {
 
-    public enum Mode {
-        NORMAL("Normal"),
+    public enum InventoryRules {
+        VANILLA("Vanilla"),
         MINIBLOX("MiniBlox");
 
         private final String name;
 
-        Mode(final String name) {
+        InventoryRules(final String name) {
             this.name = name;
         }
 
@@ -37,17 +37,13 @@ public final class InventoryManagerSettings {
         PUNCH_BOW
     }
 
-    private final BoundedNumberProperty actionDelay;
-    private final NumberProperty openDelay;
-    private final BoundedNumberProperty dropDelay;
-
-    private final BooleanProperty instant;
     private final BooleanProperty autoArmor;
     private final BooleanProperty throwItems;
     private final BooleanProperty inventoryOnly;
     private final BooleanProperty fastThrow;
 
-    private final ModeProperty<Mode> mode;
+    private final ModeProperty<AcaInventoryActionScheduler.TimingMode> timingMode;
+    private final ModeProperty<InventoryRules> inventoryRules;
     private final ModeProperty<OffhandMode> offhandMode;
     private final ModeProperty<BowPriority> bowPriority;
 
@@ -69,20 +65,13 @@ public final class InventoryManagerSettings {
     private final NumberProperty crystalSlot;
 
     public InventoryManagerSettings(final InventoryManagerModule module) {
-        this.instant = new BooleanProperty("Instant", false);
-        this.actionDelay = new BoundedNumberProperty("Delay", 150, 200, 0, 500, 10)
-                .hideIf(() -> instant.getValue());
-        this.openDelay = new NumberProperty("Open Delay", 2, 0, 10, 1)
-                .hideIf(() -> instant.getValue());
-        this.dropDelay = new BoundedNumberProperty("Drop Delay", 150, 200, 0, 500, 10)
-                .hideIf(() -> instant.getValue());
-
         this.autoArmor = new BooleanProperty("Auto Armor", true);
         this.throwItems = new BooleanProperty("Throw Items", true);
         this.inventoryOnly = new BooleanProperty("Inventory Only", true);
         this.fastThrow = new BooleanProperty("Fast Throw", false).hideIf(() -> !throwItems.getValue());
 
-        this.mode = new ModeProperty<>("Mode", Mode.NORMAL);
+        this.timingMode = new ModeProperty<>("Timing", AcaInventoryActionScheduler.TimingMode.ACA);
+        this.inventoryRules = new ModeProperty<>("Inventory Rules", InventoryRules.VANILLA);
         this.offhandMode = new ModeProperty<>("Offhand Items", OffhandMode.PROJECTILE);
         this.bowPriority = new ModeProperty<>("Bow Priority", BowPriority.CROSSBOW);
 
@@ -104,8 +93,8 @@ public final class InventoryManagerSettings {
         this.crystalSlot = new NumberProperty("Crystal Slot", 0, 0, 9, 1);
 
         module.addProperties(
-                new GroupProperty("Timing", instant, actionDelay, openDelay, dropDelay),
-                new GroupProperty("General", mode, autoArmor, throwItems, inventoryOnly, fastThrow, offhandMode, bowPriority),
+                new GroupProperty("Timing", timingMode),
+                new GroupProperty("General", inventoryRules, autoArmor, throwItems, inventoryOnly, fastThrow, offhandMode, bowPriority),
                 new GroupProperty("Limits", maxEggsSnowballsSize, maxBlockSize, maxFoodSize, maxRodSize),
                 new GroupProperty("Slots",
                         swordSlot,
@@ -123,36 +112,8 @@ public final class InventoryManagerSettings {
         );
     }
 
-    public Double getActionDelay() {
-        return actionDelay.getRandomValue();
-    }
-
-    public boolean isInstantEnabled() {
-        return instant.getValue();
-    }
-
-    public long getActionDelayMinimum() {
-        return actionDelay.getValue().first.longValue();
-    }
-
-    public long getActionDelayMaximum() {
-        return actionDelay.getValue().second.longValue();
-    }
-
-    public int getOpenDelayTicks() {
-        return openDelay.getValue().intValue();
-    }
-
-    public Double getDropDelay() {
-        return dropDelay.getRandomValue();
-    }
-
-    public long getDropDelayMinimum() {
-        return dropDelay.getValue().first.longValue();
-    }
-
-    public long getDropDelayMaximum() {
-        return dropDelay.getValue().second.longValue();
+    public AcaInventoryActionScheduler.TimingMode getTimingMode() {
+        return this.timingMode.getValue();
     }
 
     public boolean isAutoArmorEnabled() {
@@ -172,7 +133,7 @@ public final class InventoryManagerSettings {
     }
 
     public boolean isMinibloxMode() {
-        return mode.getValue() == Mode.MINIBLOX;
+        return inventoryRules.getValue() == InventoryRules.MINIBLOX;
     }
 
     public OffhandMode getOffhandMode() {

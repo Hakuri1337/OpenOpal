@@ -35,9 +35,6 @@ public final class InventoryUtility {
     public static final int HOTBAR_SCREEN_OFFSET = 36;
     public static final int OFFHAND_SWAP_BUTTON = 40;
     public static final int OFFHAND_SCREEN_SLOT = 45;
-    public static final long ACA_MULTIINTERACTION_QUICK_MOVE_DELAY_MS = 225L;
-    public static final long ACA_MULTIINTERACTION_PICKUP_DELAY_MS = 375L;
-    public static final long ACA_INVENTORY_CLOSE_DELAY_MS = 90L;
 
     private InventoryUtility() {
     }
@@ -649,14 +646,6 @@ public final class InventoryUtility {
         if (screenSlot != -1) {
             swap(screenHandler, screenSlot, OFFHAND_SWAP_BUTTON);
         }
-    }
-
-    public static long withAcaQuickMoveDelay(final long delay) {
-        return Math.max(delay, ACA_MULTIINTERACTION_QUICK_MOVE_DELAY_MS);
-    }
-
-    public static long withAcaPickupDelay(final long delay) {
-        return Math.max(delay, ACA_MULTIINTERACTION_PICKUP_DELAY_MS);
     }
 
     public static int calculateEnchantmentLevel(final ItemStack itemStack, final RegistryKey<Enchantment> enchantment) {

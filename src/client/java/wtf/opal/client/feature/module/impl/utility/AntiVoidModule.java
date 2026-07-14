@@ -13,6 +13,7 @@ import wtf.opal.client.feature.module.ModuleCategory;
 import wtf.opal.client.feature.module.impl.movement.flight.FlightModule;
 import wtf.opal.client.feature.module.impl.movement.longjump.LongJumpModule;
 import wtf.opal.client.feature.module.impl.utility.nofall.NoFallModule;
+import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldModule;
 import wtf.opal.client.feature.module.repository.ModuleRepository;
 import wtf.opal.event.impl.game.packet.ReceivePacketEvent;
 import wtf.opal.event.impl.game.player.movement.PreMovementPacketEvent;
@@ -44,6 +45,7 @@ AntiVoidModule extends Module {
         final LongJumpModule longJumpModule = moduleRepository.getModule(LongJumpModule.class);
         final boolean shouldRun = !longJumpModule.isEnabled()
                 && !moduleRepository.getModule(FlightModule.class).isEnabled()
+                && !moduleRepository.getModule(ScaffoldModule.class).isEnabled()
                 && !mc.player.getAbilities().allowFlying
                 && !mc.player.getAbilities().flying;
 

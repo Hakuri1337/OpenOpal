@@ -27,9 +27,10 @@ import wtf.opal.client.feature.module.Module;
 import wtf.opal.client.feature.module.ModuleCategory;
 import wtf.opal.client.feature.helper.impl.player.mouse.MouseHelper;
 import wtf.opal.client.feature.module.property.impl.bool.BooleanProperty;
-import wtf.opal.client.feature.module.property.impl.number.BoundedNumberProperty;
-import wtf.opal.event.impl.game.PreGameTickEvent;
+import wtf.opal.client.feature.module.property.impl.mode.ModeProperty;
+import wtf.opal.event.impl.game.PostGameTickEvent;
 import wtf.opal.event.impl.game.input.MouseHandleInputEvent;
+import wtf.opal.event.impl.game.inventory.ManualInventoryInteractionEvent;
 import wtf.opal.event.impl.game.player.interaction.ItemUseEvent;
 import wtf.opal.event.subscriber.Subscribe;
 import wtf.opal.mixin.KeyBindingAccessor;
@@ -49,12 +50,10 @@ ChestStealerModule extends Module {
 
     private final BooleanProperty smart = new BooleanProperty("Smart", true);
     private final BooleanProperty highlight = new BooleanProperty("Highlight items", true).hideIf(() -> !smart.getValue());
-    private final BooleanProperty instant = new BooleanProperty("Instant", false);
+    private final ModeProperty<AcaInventoryActionScheduler.TimingMode> timingMode =
+            new ModeProperty<>("Timing", AcaInventoryActionScheduler.TimingMode.ACA);
     private final BooleanProperty ghostHand = new BooleanProperty("Ghost Hand", false);
     private final BooleanProperty ghostDebug = new BooleanProperty("Ghost Debug", false).hideIf(() -> !ghostHand.getValue());
-
-    private final BoundedNumberProperty delay = new BoundedNumberProperty("Delay", 135, 190, 0, 400, 5)
-            .hideIf(() -> instant.getValue());
 
     private long ghostLastInteractTime;
     private boolean ghostSessionActive;
@@ -65,7 +64,16 @@ ChestStealerModule extends Module {
 
     public ChestStealerModule() {
         super("Chest Stealer", "Steals only useful or upgraded items from chests.", ModuleCategory.UTILITY);
-        addProperties(smart, highlight, instant, ghostHand, ghostDebug, delay);
+        addProperties(smart, highlight, timingMode, ghostHand, ghostDebug);
+    }
+
+    @Override
+    protected void onDisable() {
+        this.actionScheduler.endSession(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
+        this.lastContainerSyncId = -1;
+        this.releaseGhostUseKey();
+        this.resetGhostSession();
+        super.onDisable();
     }
 
     @Subscribe
@@ -109,10 +117,13 @@ ChestStealerModule extends Module {
     }
 
     @Subscribe
-    public void onPreGameTickEvent(final PreGameTickEvent event) {
+    public void onPostGameTickEvent(final PostGameTickEvent event) {
         this.updateGhostHandSession();
 
         if (!(mc.currentScreen instanceof GenericContainerScreen container)) {
+            if (this.lastContainerSyncId != -1) {
+                this.actionScheduler.endSession(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
+            }
             this.lastContainerSyncId = -1;
             return;
         }
@@ -122,9 +133,16 @@ ChestStealerModule extends Module {
 
         if (this.lastContainerSyncId != screenHandler.syncId) {
             this.lastContainerSyncId = screenHandler.syncId;
-            if (!this.instant.getValue()) {
-                this.actionScheduler.beginSession(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
-            }
+        }
+        this.actionScheduler.beginSession(
+                AcaInventoryActionScheduler.Owner.CHEST_STEALER,
+                this.timingMode.getValue(),
+                mc.player.age
+        );
+
+        if (!screenHandler.getCursorStack().isEmpty()) {
+            this.actionScheduler.pauseForManualInput(AcaInventoryActionScheduler.Owner.CHEST_STEALER, mc.player.age);
+            return;
         }
 
         if (chestInventory.isEmpty() || !this.canStoreAnyChestItem(chestInventory)) {
@@ -147,28 +165,19 @@ ChestStealerModule extends Module {
         }
 
         boolean tookItem = false;
-        if (this.instant.getValue()) {
+        if (this.timingMode.getValue() == AcaInventoryActionScheduler.TimingMode.INSTANT) {
             for (final int slot : candidates) {
                 if (slot < 0 || slot >= chestInventory.size() || chestInventory.getStack(slot).isEmpty()) {
                     continue;
                 }
-                InventoryUtility.shiftClick(screenHandler, slot, 0);
-                tookItem = true;
+                tookItem |= this.moveChestSlot(screenHandler, slot);
             }
-        } else if (!candidates.isEmpty() && canMove()) {
+        } else if (!candidates.isEmpty()) {
             final int slot = this.selectNextSlot(candidates);
-            InventoryUtility.shiftClick(screenHandler, slot, 0);
-            this.actionScheduler.record(
-                    AcaInventoryActionScheduler.Owner.CHEST_STEALER,
-                    AcaInventoryActionScheduler.Action.QUICK_MOVE,
-                    slot,
-                    this.getDelayMinimum(),
-                    this.getDelayMaximum()
-            );
-            tookItem = true;
+            tookItem = this.moveChestSlot(screenHandler, slot);
         }
 
-        if (this.instant.getValue() && tookItem) {
+        if (this.timingMode.getValue() == AcaInventoryActionScheduler.TimingMode.INSTANT && tookItem) {
             final boolean candidateRemains = candidates.stream().anyMatch(slot ->
                     slot >= 0 && slot < chestInventory.size() && !chestInventory.getStack(slot).isEmpty());
             if (!candidateRemains) {
@@ -204,8 +213,11 @@ ChestStealerModule extends Module {
     }
 
     public boolean isRateLimited() {
-        return !this.instant.getValue()
-                && this.actionScheduler.isCoolingDown(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
+        return mc.player != null && this.actionScheduler.isCoolingDown(
+                AcaInventoryActionScheduler.Owner.CHEST_STEALER,
+                this.timingMode.getValue(),
+                mc.player.age
+        );
     }
 
     public boolean isConflictActive() {
@@ -324,9 +336,21 @@ ChestStealerModule extends Module {
                 .orElse(ItemStack.EMPTY);
     }
 
-    public boolean canMove() {
-        return this.instant.getValue()
-                || this.actionScheduler.canAct(AcaInventoryActionScheduler.Action.QUICK_MOVE);
+    private boolean moveChestSlot(final GenericContainerScreenHandler screenHandler, final int slot) {
+        if (mc.player != null
+                && this.timingMode.getValue() == AcaInventoryActionScheduler.TimingMode.ACA
+                && (mc.player.isSprinting() || mc.player.isSneaking())) {
+            return false;
+        }
+        return mc.player != null && this.actionScheduler.executeAction(
+                AcaInventoryActionScheduler.Owner.CHEST_STEALER,
+                this.timingMode.getValue(),
+                mc.player.age,
+                AcaInventoryActionScheduler.Action.QUICK_MOVE,
+                slot,
+                false,
+                () -> InventoryUtility.shiftClick(screenHandler, slot, 0)
+        );
     }
 
     private boolean canStoreAnyChestItem(final Inventory chestInventory) {
@@ -357,19 +381,23 @@ ChestStealerModule extends Module {
     }
 
     private void closeContainerWhenSafe(final GenericContainerScreen container) {
-        if (this.instant.getValue()) {
-            container.close();
-            return;
-        }
-        this.actionScheduler.scheduleClose();
-        if (this.actionScheduler.canClose()) {
+        this.actionScheduler.scheduleClose(
+                AcaInventoryActionScheduler.Owner.CHEST_STEALER,
+                this.timingMode.getValue(),
+                mc.player.age
+        );
+        if (this.actionScheduler.canClose(
+                AcaInventoryActionScheduler.Owner.CHEST_STEALER,
+                this.timingMode.getValue(),
+                mc.player.age
+        )) {
             container.close();
             this.actionScheduler.recordClose(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
         }
     }
 
     private int selectNextSlot(final List<Integer> candidates) {
-        final int lastSlot = this.actionScheduler.getLastRawSlot();
+        final int lastSlot = this.actionScheduler.getLastRawSlot(AcaInventoryActionScheduler.Owner.CHEST_STEALER);
         if (lastSlot < 0) {
             Collections.shuffle(candidates);
             return candidates.getFirst();
@@ -383,12 +411,13 @@ ChestStealerModule extends Module {
         return Math.abs(first / 9 - second / 9) + Math.abs(first % 9 - second % 9);
     }
 
-    private long getDelayMinimum() {
-        return delay.getValue().first.longValue();
-    }
-
-    private long getDelayMaximum() {
-        return delay.getValue().second.longValue();
+    @Subscribe
+    public void onManualInventoryInteraction(final ManualInventoryInteractionEvent event) {
+        if (mc.player == null || !(mc.currentScreen instanceof GenericContainerScreen container)
+                || event.syncId() != container.getScreenHandler().syncId) {
+            return;
+        }
+        this.actionScheduler.pauseForManualInput(AcaInventoryActionScheduler.Owner.CHEST_STEALER, mc.player.age);
     }
 
     private void updateGhostHandSession() {

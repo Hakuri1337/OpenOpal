@@ -8,18 +8,18 @@ import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemUsageContext;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.*;
 import net.minecraft.util.shape.VoxelShape;
-import wtf.opal.client.OpalClient;
 import wtf.opal.client.feature.helper.impl.LocalDataWatch;
 import wtf.opal.client.feature.helper.impl.player.mouse.MouseHelper;
+import wtf.opal.client.feature.helper.impl.player.packet.blockage.impl.OutboundNetworkBlockage;
 import wtf.opal.client.feature.helper.impl.player.rotation.RotationHelper;
 import wtf.opal.client.feature.helper.impl.player.rotation.model.impl.InstantRotationModel;
 import wtf.opal.client.feature.helper.impl.player.slot.SlotHelper;
-import wtf.opal.client.feature.module.impl.utility.BlinkModule;
 import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldModule;
 import wtf.opal.client.feature.module.impl.world.scaffold.ScaffoldSettings;
 import wtf.opal.client.feature.module.property.impl.mode.ModuleMode;
@@ -30,10 +30,14 @@ import wtf.opal.event.impl.game.PostGameTickEvent;
 import wtf.opal.event.impl.game.PreGameTickEvent;
 import wtf.opal.event.impl.game.input.MouseHandleInputEvent;
 import wtf.opal.event.impl.game.input.MoveInputEvent;
+import wtf.opal.event.impl.game.packet.InstantaneousSendPacketEvent;
 import wtf.opal.event.impl.game.player.interaction.block.BlockPlacedEvent;
+import wtf.opal.event.impl.game.player.movement.PostMovementPacketEvent;
+import wtf.opal.event.impl.game.player.movement.PreMovementPacketEvent;
 import wtf.opal.event.impl.render.RenderWorldEvent;
 import wtf.opal.event.subscriber.Subscribe;
 import wtf.opal.mixin.LivingEntityAccessor;
+import wtf.opal.mixin.PlayerMoveC2SPacketAccessor;
 import wtf.opal.utility.misc.chat.ChatUtility;
 import wtf.opal.utility.player.InventoryUtility;
 import wtf.opal.utility.player.MoveUtility;
@@ -71,12 +75,28 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
     private int blockFlyTicks;
     private float lastForward;
     private float lastSideways;
-    private float lastPlacePitch = Float.NaN;
+    private float lastPlacedYawDelta = Float.NaN;
     private int lastSearchAge = -1;
     private BlockPos lastSearchOrigin;
     private BlockData lastSearchData;
     private String lastDebugMessage;
     private int lastDebugAge = -1;
+    private boolean placementRequested;
+    private int placementRequestAge = -1;
+    private BlockData placementRequestData;
+    private SlotData placementRequestSlot;
+    private Vec2f placementRequestRotation;
+    private Vec2f packetRotation;
+    private Vec3d packetEyePos;
+    private boolean placementArmed;
+    private int placementArmedAge = -1;
+    private BlockData placementArmedData;
+    private SlotData placementArmedSlot;
+    private Vec2f placementArmedRotation;
+    private float placementArmedYawDelta = Float.NaN;
+    private Vec2f serverRotation;
+    private Vec2f observedMovementRotation;
+    private int observedMovementAge = -1;
 
     public SilenceTellyScaffold(final ScaffoldModule module) {
         super(module);
@@ -88,6 +108,7 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         if (mc.player != null) {
             this.posY = MathHelper.floor(mc.player.getY() - 1.0D);
             this.lastRotation = new Vec2f(mc.player.getYaw(), mc.player.getPitch());
+            this.serverRotation = this.lastRotation;
         }
         super.onEnable();
     }
@@ -140,11 +161,29 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
             return;
         }
 
+        if (this.placementRequestAge != mc.player.age) {
+            this.clearPlacementRequest();
+        }
+        if (this.placementArmed && this.placementArmedAge != mc.player.age) {
+            this.clearPlacementArmed();
+        }
+        if (this.placementArmed) {
+            if (this.isSlotStillValid(this.placementArmedSlot)) {
+                this.applySlot(this.placementArmedSlot);
+                return;
+            }
+            this.clearPlacementArmed();
+        }
+
+        this.preparePlacementTarget();
+    }
+
+    private boolean preparePlacementTarget() {
         this.blockSlot = this.selectBlockSlot();
         if (this.blockSlot == null || !this.isSlotStillValid(this.blockSlot)) {
             this.clearTarget();
             SlotHelper.getInstance().stop();
-            return;
+            return false;
         }
 
         this.updatePosY();
@@ -159,6 +198,7 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         if (this.rotation != null) {
             RotationHelper.getHandler().rotate(this.rotation, InstantRotationModel.INSTANCE);
         }
+        return this.blockData != null && this.rotation != null;
     }
 
     @Subscribe(priority = 3)
@@ -168,10 +208,22 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         }
 
         MouseHelper.getRightButton().setDisabled();
+        final boolean hadArmedPlacement = this.placementArmed;
+        final boolean placed = this.tryPlaceArmed();
+        if (hadArmedPlacement) {
+            if (placed) {
+                this.invalidateSearchCache();
+            }
+            this.preparePlacementTarget();
+        }
+        this.requestCurrentPlacement();
+    }
+
+    private void requestCurrentPlacement() {
         if (this.blockData == null || this.blockSlot == null) {
             return;
         }
-        if (this.lastPlaceAge == mc.player.age || !this.canPlace || this.isOutgoingPlacementBlocked()) {
+        if (!this.canPlace || this.isOutgoingPlacementBlocked()) {
             return;
         }
 
@@ -189,14 +241,60 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
             return;
         }
 
-        if (this.settings().isSilenceTellyDuplicateRotPlace() && !Float.isNaN(this.lastPlacePitch)
-                && Math.abs(appliedRotation.y - this.lastPlacePitch) < 1.0E-4F) {
-            return;
+        this.placementRequested = true;
+        this.placementRequestAge = mc.player.age;
+        this.placementRequestData = this.blockData;
+        this.placementRequestSlot = this.blockSlot;
+        this.placementRequestRotation = appliedRotation;
+    }
+
+    private boolean tryPlaceArmed() {
+        if (!this.placementArmed) {
+            return false;
+        }
+        if (this.placementArmedAge != mc.player.age || this.lastPlaceAge == mc.player.age) {
+            this.debug("discard stale armed placement age=" + this.placementArmedAge);
+            this.clearPlacementArmed();
+            return false;
+        }
+        if (this.isOutgoingPlacementBlocked()) {
+            this.debug("discard armed placement while packets are blocked");
+            this.clearPlacementArmed();
+            return false;
         }
 
-        this.applySlot(this.blockSlot);
+        final BlockData armedData = this.placementArmedData;
+        final SlotData armedSlot = this.placementArmedSlot;
+        final Vec2f armedRotation = this.placementArmedRotation;
+        final float armedYawDelta = this.placementArmedYawDelta;
+        final Vec3d eyePos = mc.player.getEyePos();
+        final BlockHitResult hitResult = SilenceTellyRaycastUtility.getFacedBlock(
+                eyePos,
+                armedRotation,
+                SilenceTellyRaycastUtility::isIgnoredBlock
+        );
+        if (!SilenceTellyRaycastUtility.didHitBlockFace(
+                eyePos,
+                armedRotation,
+                armedData.pos(),
+                armedData.facing(),
+                true
+        )) {
+            this.debug("armed hit mismatch");
+            this.clearPlacementArmed();
+            return false;
+        }
+        if (!this.isSlotStillValid(armedSlot) || !this.canPlaceAt(armedData, hitResult, armedSlot)) {
+            this.debug("armed place validation failed");
+            this.clearPlacementArmed();
+            return false;
+        }
+
+        this.blockData = armedData;
+        this.blockSlot = armedSlot;
+        this.applySlot(armedSlot);
         if (this.settings().isSilenceTellyAbuseRotation()) {
-            this.abuseRotation(30.0F, appliedRotation.x);
+            this.abuseRotation(30.0F, armedRotation.x);
         }
         if (this.settings().isSilenceTellyBlockFly()) {
             this.updateBlockFlyBeforePlace();
@@ -205,24 +303,180 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
             this.interactItemBeforePlace();
         }
 
-        final ActionResult result = mc.interactionManager.interactBlock(mc.player, this.blockSlot.hand(), hitResult);
+        this.clearPlacementArmed();
+        final ActionResult result = mc.interactionManager.interactBlock(mc.player, armedSlot.hand(), hitResult);
         if (!result.isAccepted()) {
             this.debug("interact rejected result=" + result);
-            return;
+            return false;
         }
 
         if (this.settings().isSilenceTellyNoSwing()) {
-            ((ClientPlayerEntityAccess) mc.player).opal$swingHandServerside(this.blockSlot.hand());
+            ((ClientPlayerEntityAccess) mc.player).opal$swingHandServerside(armedSlot.hand());
         } else {
-            mc.player.swingHand(this.blockSlot.hand());
+            mc.player.swingHand(armedSlot.hand());
         }
 
         this.lastPlaceAge = mc.player.age;
-        this.lastPlacePitch = appliedRotation.y;
+        if (!Float.isNaN(armedYawDelta)) {
+            this.lastPlacedYawDelta = armedYawDelta;
+        }
         this.placeCount++;
-        this.lastPlacePosition = this.blockData.placePos();
+        this.lastPlacePosition = armedData.placePos();
         EventDispatcher.dispatch(new BlockPlacedEvent(hitResult));
-        this.debug("place ok hand=" + this.blockSlot.hand() + " slot=" + this.blockSlot.slot() + " face=" + this.blockData.facing());
+        this.debug("place ok hand=" + armedSlot.hand() + " slot=" + armedSlot.slot() + " face=" + armedData.facing());
+        return true;
+    }
+
+    // Placement rotation must be the final movement-event writer; the event bus runs higher priorities first.
+    @Subscribe(priority = -100)
+    public void onPreMovementPacket(final PreMovementPacketEvent event) {
+        if (!this.hasCurrentPlacementRequest() || this.isOutgoingPlacementBlocked()) {
+            this.packetRotation = null;
+            this.packetEyePos = null;
+            return;
+        }
+
+        final Vec3d eyePos = this.getPacketEyePos(event.getX(), event.getY(), event.getZ());
+        Vec2f target = this.placementRequestRotation;
+        if (!SilenceTellyRaycastUtility.didHitBlockFace(
+                eyePos,
+                target,
+                this.placementRequestData.pos(),
+                this.placementRequestData.facing(),
+                true
+        )) {
+            final Vec2f stableTarget = SilenceTellyRotationUtility.getClosestToBlockFace(
+                    this.placementRequestData.pos(),
+                    this.placementRequestData.facing(),
+                    new Vec2f(event.getYaw(), event.getPitch()),
+                    eyePos,
+                    this.settings().isSilenceTellyFixRotation()
+            );
+            target = this.applyDuplicateRotation(stableTarget);
+            if (!SilenceTellyRaycastUtility.didHitBlockFace(
+                    eyePos,
+                    target,
+                    this.placementRequestData.pos(),
+                    this.placementRequestData.facing(),
+                    true
+            )) {
+                target = stableTarget;
+            }
+        }
+
+        target = this.avoidDuplicateYawDelta(target, eyePos, this.placementRequestData);
+
+        if (!SilenceTellyRaycastUtility.didHitBlockFace(
+                eyePos,
+                target,
+                this.placementRequestData.pos(),
+                this.placementRequestData.facing(),
+                true
+        )) {
+            this.debug("packet rotation cannot hit target");
+            this.packetRotation = null;
+            this.packetEyePos = null;
+            return;
+        }
+
+        event.setYaw(target.x);
+        event.setPitch(target.y);
+        this.packetRotation = target;
+        this.packetEyePos = eyePos;
+    }
+
+    @Subscribe(priority = -100)
+    public void onInstantaneousSendPacket(final InstantaneousSendPacketEvent event) {
+        if (mc.player == null || !(event.getPacket() instanceof PlayerMoveC2SPacket movePacket) || !movePacket.changesLook()) {
+            return;
+        }
+
+        Vec2f outboundRotation = new Vec2f(
+                movePacket.getYaw(mc.player.getYaw()),
+                movePacket.getPitch(mc.player.getPitch())
+        );
+        final boolean placementPacket = this.hasCurrentPlacementRequest()
+                && this.packetRotation != null
+                && this.packetEyePos != null;
+        if (placementPacket && !SilenceTellyRaycastUtility.didHitBlockFace(
+                this.packetEyePos,
+                outboundRotation,
+                this.placementRequestData.pos(),
+                this.placementRequestData.facing(),
+                true
+        )) {
+            final PlayerMoveC2SPacketAccessor accessor = (PlayerMoveC2SPacketAccessor) movePacket;
+            accessor.setYaw(this.packetRotation.x);
+            accessor.setPitch(this.packetRotation.y);
+            outboundRotation = this.packetRotation;
+        }
+        if (placementPacket) {
+            this.packetRotation = outboundRotation;
+        }
+        this.observedMovementRotation = outboundRotation;
+        this.observedMovementAge = mc.player.age;
+    }
+
+    @Subscribe
+    public void onPostMovementPacket(final PostMovementPacketEvent event) {
+        if (!this.ready()) {
+            this.clearPlacementRequest();
+            this.clearPlacementArmed();
+            return;
+        }
+
+        final Vec2f previousServerRotation = this.serverRotation;
+        if (this.observedMovementRotation != null && this.observedMovementAge == mc.player.age) {
+            this.serverRotation = this.observedMovementRotation;
+        } else if (this.serverRotation == null) {
+            this.serverRotation = new Vec2f(event.getYaw(), event.getPitch());
+        }
+        this.observedMovementRotation = null;
+        this.observedMovementAge = -1;
+        if (!this.hasCurrentPlacementRequest() || this.packetRotation == null || this.isOutgoingPlacementBlocked()) {
+            this.clearPlacementRequest();
+            return;
+        }
+
+        final BlockData requestedData = this.placementRequestData;
+        final SlotData requestedSlot = this.placementRequestSlot;
+        final Vec2f appliedRotation = this.serverRotation;
+        this.clearPlacementRequest();
+
+        final Vec3d eyePos = this.getPacketEyePos(event.getX(), event.getY(), event.getZ());
+        final BlockHitResult hitResult = SilenceTellyRaycastUtility.getFacedBlock(
+                eyePos,
+                appliedRotation,
+                SilenceTellyRaycastUtility::isIgnoredBlock
+        );
+        if (!SilenceTellyRaycastUtility.didHitBlockFace(
+                eyePos,
+                appliedRotation,
+                requestedData.pos(),
+                requestedData.facing(),
+                true
+        )) {
+            this.debug("post-packet hit mismatch");
+            return;
+        }
+
+        if (!this.isSlotStillValid(requestedSlot) || !this.canPlaceAt(requestedData, hitResult, requestedSlot)) {
+            this.debug("post-packet place validation failed");
+            return;
+        }
+
+        // Modern clients place before flying; carry the validated target into the next input phase.
+        this.placementArmed = true;
+        this.placementArmedAge = mc.player.age;
+        this.placementArmedData = requestedData;
+        this.placementArmedSlot = requestedSlot;
+        this.placementArmedRotation = appliedRotation;
+        if (previousServerRotation != null) {
+            this.placementArmedYawDelta = Math.abs(MathHelper.wrapDegrees(appliedRotation.x - previousServerRotation.x));
+        } else {
+            this.placementArmedYawDelta = Float.NaN;
+        }
+        this.debug("placement armed face=" + requestedData.facing());
     }
 
     @Subscribe
@@ -413,11 +667,47 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         return new Vec2f(yaw, pitch);
     }
 
+    private Vec2f avoidDuplicateYawDelta(final Vec2f target, final Vec3d eyePos, final BlockData data) {
+        if (target == null || eyePos == null || data == null || this.serverRotation == null
+                || !this.settings().isSilenceTellyDuplicateRotPlace() || Float.isNaN(this.lastPlacedYawDelta)) {
+            return target;
+        }
+
+        final float yawDelta = Math.abs(MathHelper.wrapDegrees(target.x - this.serverRotation.x));
+        if (yawDelta <= 2.0F || Math.abs(yawDelta - this.lastPlacedYawDelta) >= 1.0E-4F) {
+            return target;
+        }
+
+        final float[] offsets = {0.15F, -0.15F, 0.3F, -0.3F, 0.6F, -0.6F, 1.0F, -1.0F};
+        for (final float offset : offsets) {
+            Vec2f candidate = new Vec2f(
+                    MathHelper.wrapDegrees(target.x + offset),
+                    target.y
+            );
+            if (this.settings().isSilenceTellyFixRotation()) {
+                candidate = SilenceTellyRotationUtility.patchSensitivity(candidate, this.serverRotation);
+            }
+
+            final float candidateDelta = Math.abs(MathHelper.wrapDegrees(candidate.x - this.serverRotation.x));
+            if (Math.abs(candidateDelta - this.lastPlacedYawDelta) < 1.0E-4F) {
+                continue;
+            }
+            if (SilenceTellyRaycastUtility.didHitBlockFace(eyePos, candidate, data.pos(), data.facing(), true)) {
+                return candidate;
+            }
+        }
+        return target;
+    }
+
     private Vec2f applyFixedSensitivity(final Vec2f target) {
+        return this.applyFixedSensitivity(target, this.getReferenceRotation());
+    }
+
+    private Vec2f applyFixedSensitivity(final Vec2f target, final Vec2f reference) {
         if (target == null || !this.settings().isSilenceTellyFixRotation()) {
             return target;
         }
-        return SilenceTellyRotationUtility.patchSensitivity(target, this.getReferenceRotation());
+        return SilenceTellyRotationUtility.patchSensitivity(target, reference);
     }
 
     private void updateCanPlace() {
@@ -706,6 +996,9 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
     }
 
     private Vec2f getReferenceRotation() {
+        if (this.serverRotation != null) {
+            return this.serverRotation;
+        }
         final Vec2f client = RotationHelper.getClientHandler().getRotation();
         return client == null ? new Vec2f(mc.player.getYaw(), mc.player.getPitch()) : client;
     }
@@ -718,8 +1011,49 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         return client == null ? new Vec2f(mc.player.getYaw(), mc.player.getPitch()) : client;
     }
 
+    private Vec3d getPacketEyePos(final double x, final double y, final double z) {
+        return new Vec3d(x, y + mc.player.getEyeHeight(mc.player.getPose()), z);
+    }
+
+    private boolean hasCurrentPlacementRequest() {
+        final int requestAgeDelta = mc.player.age - this.placementRequestAge;
+        return this.placementRequested
+                && requestAgeDelta >= 0
+                && requestAgeDelta <= 1
+                && this.placementRequestData != null
+                && this.placementRequestSlot != null
+                && this.placementRequestRotation != null
+                && this.isBlockDataUsable(this.placementRequestData)
+                && this.isSlotStillValid(this.placementRequestSlot);
+    }
+
+    private void clearPlacementRequest() {
+        this.placementRequested = false;
+        this.placementRequestAge = -1;
+        this.placementRequestData = null;
+        this.placementRequestSlot = null;
+        this.placementRequestRotation = null;
+        this.packetRotation = null;
+        this.packetEyePos = null;
+    }
+
+    private void clearPlacementArmed() {
+        this.placementArmed = false;
+        this.placementArmedAge = -1;
+        this.placementArmedData = null;
+        this.placementArmedSlot = null;
+        this.placementArmedRotation = null;
+        this.placementArmedYawDelta = Float.NaN;
+    }
+
+    private void invalidateSearchCache() {
+        this.lastSearchAge = -1;
+        this.lastSearchOrigin = null;
+        this.lastSearchData = null;
+    }
+
     private boolean isOutgoingPlacementBlocked() {
-        return OpalClient.getInstance().getModuleRepository().getModule(BlinkModule.class).isEnabled();
+        return OutboundNetworkBlockage.get().isAnyBlockages();
     }
 
     private void interactItemBeforePlace() {
@@ -767,6 +1101,8 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
     }
 
     private void clearTarget() {
+        this.clearPlacementRequest();
+        this.clearPlacementArmed();
         this.blockData = null;
         this.rotation = null;
         this.canPlace = false;
@@ -792,12 +1128,17 @@ public final class SilenceTellyScaffold extends ModuleMode<ScaffoldModule> {
         this.modulePressedSneak = false;
         this.lastForward = 0.0F;
         this.lastSideways = 0.0F;
-        this.lastPlacePitch = Float.NaN;
+        this.lastPlacedYawDelta = Float.NaN;
         this.lastSearchAge = -1;
         this.lastSearchOrigin = null;
         this.lastSearchData = null;
         this.lastDebugMessage = null;
         this.lastDebugAge = -1;
+        this.clearPlacementRequest();
+        this.clearPlacementArmed();
+        this.serverRotation = null;
+        this.observedMovementRotation = null;
+        this.observedMovementAge = -1;
     }
 
     private void releaseModuleSneak() {
