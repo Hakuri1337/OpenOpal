@@ -36,9 +36,21 @@ public final class AutoChestModule extends Module {
         addProperties(ticks, autoDeposit);
     }
 
+    @Override
+    protected void onEnable() {
+        this.resetState();
+        super.onEnable();
+    }
+
+    @Override
+    protected void onDisable() {
+        this.resetState();
+        super.onDisable();
+    }
+
     @Subscribe
     public void onPreGameTick(final PreGameTickEvent event) {
-        if (!(mc.currentScreen instanceof GenericContainerScreen container && container.getTitle().getString().contains("Chest"))) {
+        if (!(mc.currentScreen instanceof GenericContainerScreen container)) {
             this.resetState();
             return;
         }

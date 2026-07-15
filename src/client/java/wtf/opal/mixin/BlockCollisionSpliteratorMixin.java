@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Group;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import wtf.opal.event.EventDispatcher;
@@ -64,6 +65,22 @@ public abstract class BlockCollisionSpliteratorMixin<T> extends AbstractIterator
         this.handleExtraVoxels(cir);
     }
 
+    @Group(name = "opal$endOfData", min = 1, max = 1)
+    @Inject(
+            method = "computeNext",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/BlockCollisionSpliterator;endOfData()Ljava/lang/Object;",
+                    remap = false
+            ),
+            cancellable = true,
+            require = 0
+    )
+    private void hookComputeNextReturnNamed(CallbackInfoReturnable<T> cir) {
+        this.handleExtraVoxels(cir);
+    }
+
+    @Group(name = "opal$endOfData")
     @Inject(
             method = "computeNext",
             at = @At(
@@ -71,9 +88,10 @@ public abstract class BlockCollisionSpliteratorMixin<T> extends AbstractIterator
                     target = "Lnet/minecraft/class_5329;endOfData()Ljava/lang/Object;",
                     remap = false
             ),
-            cancellable = true
+            cancellable = true,
+            require = 0
     )
-    private void hookComputeNextReturn(CallbackInfoReturnable<T> cir) {
+    private void hookComputeNextReturnIntermediary(CallbackInfoReturnable<T> cir) {
         this.handleExtraVoxels(cir);
     }
 
